@@ -38,7 +38,6 @@ export default function DashboardPage() {
   const isReady   = useGeoStore(selectIsReady);
   const reason    = useGeoStore((s) => s.reason);
   const startGPS         = useGeoStore((s) => s.startGPS);
-  const skipGPS          = useGeoStore((s) => s.skipToFallback);
   const refreshLocation  = useGeoStore((s) => s.refreshLocation);
 
   const [locRefreshing, setLocRefreshing] = useState(false);
@@ -120,10 +119,7 @@ export default function DashboardPage() {
           </p>
           <button onClick={startGPS}
             className="px-6 py-3 bg-primary-600 text-white rounded-xl text-sm font-semibold">
-            Allow Location Access
-          </button>
-          <button onClick={skipGPS} className="text-xs text-gray-400 underline">
-            Skip — use {FALLBACK_LOCATION.label} weather
+            Allow GPS Access
           </button>
         </div>
       </div>
@@ -316,7 +312,7 @@ function LocationBanner({ reason, onRetry }: { reason: string; onRetry: () => vo
     <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 flex items-start gap-2">
       <AlertTriangle size={14} className="text-amber-600 shrink-0" />
       <span className="text-xs text-amber-800 flex-1 min-w-0 leading-snug break-words">
-        {reason || 'Location unavailable'} — using {FALLBACK_LOCATION.label} weather. For better location accuracy, use the mobile version.
+        {reason || 'Precise location unavailable'} Showing {FALLBACK_LOCATION.label} weather instead. For accurate tracking, use the mobile version.
       </span>
       <button onClick={onRetry}
         className="text-xs font-semibold text-amber-700 underline shrink-0">

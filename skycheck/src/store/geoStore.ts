@@ -29,6 +29,7 @@ let _bestFix: GeolocationPosition | null = null;
 const IDEAL_ACCURACY_M = 80;
 const MAX_TRUSTED_ACCURACY_M = 500;
 const GPS_SETTLE_TIMEOUT_MS = 25_000;
+const PRECISE_LOCATION_FALLBACK_REASON = 'Precise location unavailable.';
 
 function _distanceM(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6_371_000;
@@ -74,6 +75,16 @@ function _stopGPS() {
   }
 }
 
+function _applyFallback(set: (state: Partial<GeoState>) => void, reason = PRECISE_LOCATION_FALLBACK_REASON, accuracy = 0) {
+  set({
+    status: 'denied',
+    reason,
+    lat: FALLBACK_LOCATION.lat,
+    lon: FALLBACK_LOCATION.lon,
+    accuracy,
+  });
+}
+
 export const useGeoStore = create<GeoState>((set, get) => ({
   status:   'idle',
   lat:      FALLBACK_LOCATION.lat,
@@ -88,8 +99,27 @@ export const useGeoStore = create<GeoState>((set, get) => ({
     if (currentStatus === 'granted' && _watchId !== null) return;
 
     if (!('geolocation' in navigator)) {
-      set({ status: 'unavailable', reason: 'GPS not supported on this device' });
+      set({
+        status: 'unavailable',
+        reason: 'GPS is not supported on this device.',
+        lat: FALLBACK_LOCATION.lat,
+        lon: FALLBACK_LOCATION.lon,
+        accuracy: 0,
+      });
       return;
+    }
+
+    if ('permissions' in navigator) {
+      navigator.permissions.query({ name: 'geolocation' as PermissionName })
+        .then((permission) => {
+          if (permission.state === 'denied') {
+            _resolved = true;
+            _bestFix = null;
+            _stopGPS();
+            _applyFallback(set, 'Location permission is blocked in your browser. Enable GPS in site settings.');
+          }
+        })
+        .catch(() => undefined);
     }
 
     _resolved = false;
@@ -106,13 +136,7 @@ export const useGeoStore = create<GeoState>((set, get) => ({
         if (_bestFix && _bestFix.coords.accuracy <= MAX_TRUSTED_ACCURACY_M) {
           _applyFix(_bestFix, set);
         } else {
-          set({
-            status: 'denied',
-            reason: 'Precise location unavailable',
-            lat: FALLBACK_LOCATION.lat,
-            lon: FALLBACK_LOCATION.lon,
-            accuracy: _bestFix ? Math.round(_bestFix.coords.accuracy) : 0,
-          });
+          _applyFallback(set, PRECISE_LOCATION_FALLBACK_REASON, _bestFix ? Math.round(_bestFix.coords.accuracy) : 0);
         }
       }
     }, GPS_SETTLE_TIMEOUT_MS);
@@ -151,13 +175,7 @@ export const useGeoStore = create<GeoState>((set, get) => ({
         _applyFix(_bestFix, set);
       } else {
         if (err.code === 1) _stopGPS();
-        set({
-          status: 'denied',
-          reason,
-          lat: FALLBACK_LOCATION.lat,
-          lon: FALLBACK_LOCATION.lon,
-          accuracy: _bestFix ? Math.round(_bestFix.coords.accuracy) : 0,
-        });
+        _applyFallback(set, reason, _bestFix ? Math.round(_bestFix.coords.accuracy) : 0);
       }
     };
 
