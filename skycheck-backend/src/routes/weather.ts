@@ -61,19 +61,10 @@ function stripPhPlaceSuffix(name: string): string {
     .trim();
 }
 
-function compactPlaceParts(parts: Array<string | undefined>): string {
-  const seen = new Set<string>();
+function firstPlaceName(parts: Array<string | undefined>): string {
   return parts
     .map((part) => stripPhPlaceSuffix(part ?? ''))
-    .filter(Boolean)
-    .filter((part) => {
-      const key = part.toLowerCase();
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
-    })
-    .slice(0, 3)
-    .join(', ');
+    .find(Boolean) ?? '';
 }
 
 function pickDisplayLocation(input: {
@@ -112,6 +103,9 @@ async function resolvePhLocation(lat: number, lon: number): Promise<string> {
         town?:         string;
         village?:      string;
         suburb?:       string;
+        locality?:     string;
+        hamlet?:       string;
+        district?:     string;
         road?:         string;
         pedestrian?:   string;
         footway?:      string;
@@ -121,8 +115,8 @@ async function resolvePhLocation(lat: number, lon: number): Promise<string> {
     const a = data.address;
     if (!a) return 'Your Area';
 
-    // Pick the most specific readable PH locality first. This lets places
-    // like Tabacuhan or Old Cabalan show instead of only the wider city label.
+    // Return one clean label only. Prefer barangay/locality names such as
+    // Tabacuhan or Old Cabalan, then fall back to street/city if needed.
     const street =
       a.road ||
       a.pedestrian ||
@@ -131,11 +125,14 @@ async function resolvePhLocation(lat: number, lon: number): Promise<string> {
     const locality =
       a.suburb         ||
       a.village        ||
+      a.locality       ||
+      a.hamlet         ||
       a.neighbourhood  ||
       a.neighborhood   ||
       a.quarter        ||
       a.residential    ||
       a.city_district  ||
+      a.district       ||
       a.town           ||
       a.municipality   ||
       a.city           ||
@@ -149,7 +146,7 @@ async function resolvePhLocation(lat: number, lon: number): Promise<string> {
       a.town ||
       a.county;
 
-    return compactPlaceParts([street, locality, city]) || 'Your Area';
+    return firstPlaceName([locality, street, city, a.state]) || 'Your Area';
   } catch {
     return 'Your Area';
   }

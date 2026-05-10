@@ -28,6 +28,7 @@ let _resolved  = false;
 let _bestFix: GeolocationPosition | null = null;
 const IDEAL_ACCURACY_M = 80;
 const MAX_TRUSTED_ACCURACY_M = 500;
+const GPS_SETTLE_TIMEOUT_MS = 25_000;
 
 function _distanceM(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6_371_000;
@@ -91,25 +92,6 @@ export const useGeoStore = create<GeoState>((set, get) => ({
       return;
     }
 
-    if ('permissions' in navigator) {
-      navigator.permissions.query({ name: 'geolocation' as PermissionName })
-        .then((permission) => {
-          if (permission.state === 'denied') {
-            _resolved = true;
-            _bestFix = null;
-            _stopGPS();
-            set({
-              status: 'denied',
-              reason: 'Location permission is blocked in your browser. Enable it in site settings.',
-              lat: OLONGAPO.lat,
-              lon: OLONGAPO.lon,
-              accuracy: 0,
-            });
-          }
-        })
-        .catch(() => undefined);
-    }
-
     _resolved = false;
     _bestFix = null;
     _stopGPS();
@@ -133,7 +115,7 @@ export const useGeoStore = create<GeoState>((set, get) => ({
           });
         }
       }
-    }, 12000);
+    }, GPS_SETTLE_TIMEOUT_MS);
 
     const onSuccess = (pos: GeolocationPosition) => {
       if (_isBetterFix(pos, _bestFix)) _bestFix = pos;
@@ -183,13 +165,13 @@ export const useGeoStore = create<GeoState>((set, get) => ({
     navigator.geolocation.getCurrentPosition(
       onSuccess,
       () => { /* silent fail — watchPosition continues */ },
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
+      { enableHighAccuracy: true, maximumAge: 0, timeout: GPS_SETTLE_TIMEOUT_MS }
     );
 
     // Phase 2: high-accuracy continuous watch
     _watchId = navigator.geolocation.watchPosition(
       onSuccess, onError,
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 12000 }
+      { enableHighAccuracy: true, maximumAge: 0, timeout: GPS_SETTLE_TIMEOUT_MS }
     );
   },
 
