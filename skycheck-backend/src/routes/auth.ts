@@ -6,6 +6,7 @@ import { OAuth2Client } from 'google-auth-library';
 import { PrismaClient } from '@prisma/client';
 import { signToken, requireAuth } from '../middleware/auth';
 import { sendVerificationEmail, sendPasswordResetEmail, getEmailConfigStatus } from '../services/emailService';
+import { verifyFirebaseIdToken } from '../services/firebaseAdmin';
 import { RISK } from '../constants/risk';
 
 const router = Router();
@@ -226,6 +227,98 @@ router.post('/google', loginLimiter, async (req: Request, res: Response) => {
 });
 
 // ── POST /auth/login ──────────────────────────────────────────────
+router.post('/firebase', loginLimiter, async (req: Request, res: Response) => {
+  try {
+    const idToken = typeof req.body?.idToken === 'string' ? req.body.idToken.trim() : '';
+    if (!idToken) {
+      res.status(400).json({ error: 'Missing Firebase credential.' });
+      return;
+    }
+
+    let decoded;
+    try {
+      decoded = await verifyFirebaseIdToken(idToken);
+    } catch (err) {
+      console.error('[Firebase] Token verification failed:', err);
+      res.status(401).json({ error: 'Firebase sign-in could not be verified.' });
+      return;
+    }
+
+    const email = decoded.email?.trim().toLowerCase();
+    const provider = decoded.firebase?.sign_in_provider;
+    const displayName = (decoded.name || email?.split('@')[0] || 'SkyCheck User').trim().slice(0, 120);
+    const verified = decoded.email_verified === true || provider === 'google.com';
+
+    if (!email) {
+      res.status(403).json({ error: 'Your Firebase account must have an email address.' });
+      return;
+    }
+
+    if (!verified) {
+      res.status(403).json({ error: 'Please verify your email address before logging in.', code: 'EMAIL_UNVERIFIED' });
+      return;
+    }
+
+    let user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          name: displayName,
+          email,
+          passHash: null,
+          googleId: provider === 'google.com' ? decoded.uid : null,
+          isVerified: true,
+        },
+      });
+    } else {
+      const data: {
+        name?: string;
+        isVerified?: boolean;
+        verifyTok?: null;
+        verifyExp?: null;
+        googleId?: string;
+      } = {};
+
+      if (!user.name?.trim()) data.name = displayName;
+      if (!user.isVerified) {
+        data.isVerified = true;
+        data.verifyTok = null;
+        data.verifyExp = null;
+      }
+      if (provider === 'google.com' && !user.googleId) data.googleId = decoded.uid;
+
+      if (Object.keys(data).length > 0) {
+        user = await prisma.user.update({ where: { id: user.id }, data });
+      }
+    }
+
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { failedLogins: 0, lockedUntil: null },
+    });
+
+    const token = signToken(user.id, user.email);
+    res.json({
+      accessToken: token,
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        isVerified: true,
+        preferences: {
+          morningAlerts: user.morningAlerts,
+          alertSound: user.alertSound,
+          vibration: user.vibration,
+        },
+        createdAt: user.createdAt.toISOString(),
+      },
+    });
+  } catch (err) {
+    console.error('[Auth] Firebase:', err);
+    res.status(500).json({ error: 'Firebase sign-in failed.' });
+  }
+});
+
 router.post('/login', loginLimiter, async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body;

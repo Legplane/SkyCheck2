@@ -1,5 +1,4 @@
 import { useEffect } from 'react';
-import { GoogleOAuthProvider } from '@react-oauth/google';
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import { QueryClient, useQuery } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
@@ -73,9 +72,7 @@ function AppShell() {
 }
 
 export default function App() {
-  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim() ?? '';
-
-  const appTree = (
+  return (
     <PersistQueryClientProvider
       client={queryClient}
       persistOptions={{
@@ -116,9 +113,4 @@ export default function App() {
       </BrowserRouter>
     </PersistQueryClientProvider>
   );
-
-  if (googleClientId) {
-    return <GoogleOAuthProvider clientId={googleClientId}>{appTree}</GoogleOAuthProvider>;
-  }
-  return appTree;
 }

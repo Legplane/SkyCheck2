@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { User, Mail, Lock, Eye, EyeOff, ChevronLeft } from 'lucide-react';
-import { register } from '../../api/auth';
+import { createUserWithEmailAndPassword, sendEmailVerification, updateProfile } from 'firebase/auth';
+import { firebaseAuth } from '../../lib/firebase';
 import { useAuthStore } from '../../store/authStore';
 import GoogleSignInButton from '../../components/GoogleSignInButton';
 import { validateEmail, validatePassword, getApiErrorMessage } from '../../utils';
@@ -37,11 +38,14 @@ export default function SignUpPage() {
 
     setIsLoading(true);
     try {
-      await register({
-        name: form.name.trim(),
-        email: form.email.trim().toLowerCase(),
-        password: form.password,
-        confirmPassword: form.confirm,
+      const credential = await createUserWithEmailAndPassword(
+        firebaseAuth,
+        form.email.trim().toLowerCase(),
+        form.password,
+      );
+      await updateProfile(credential.user, { displayName: form.name.trim() });
+      await sendEmailVerification(credential.user, {
+        url: `${window.location.origin}/auth/login`,
       });
       setPendingVerifyEmail(form.email);
       navigate('/auth/verify');

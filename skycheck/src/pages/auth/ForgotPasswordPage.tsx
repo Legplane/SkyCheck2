@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Mail, KeyRound, ChevronLeft, CheckCircle2 } from 'lucide-react';
-import { forgotPassword } from '../../api/auth';
+import { sendPasswordResetEmail } from 'firebase/auth';
+import { firebaseAuth } from '../../lib/firebase';
 import { validateEmail, getApiErrorMessage } from '../../utils';
 
 export default function ForgotPasswordPage() {
@@ -24,10 +25,13 @@ export default function ForgotPasswordPage() {
     setEmailError('');
     setIsLoading(true);
     try {
-      // Always show "sent" state regardless of whether email exists (anti-enumeration)
-      await forgotPassword(email.trim().toLowerCase()).catch(() => {});
+      await sendPasswordResetEmail(firebaseAuth, email.trim().toLowerCase(), {
+        url: `${window.location.origin}/auth/login`,
+      });
       setSent(true);
       setCountdown(60);
+    } catch (err) {
+      setEmailError(getApiErrorMessage(err, 'Failed to send reset email. Check the address and try again.'));
     } finally {
       setIsLoading(false);
     }
@@ -35,8 +39,14 @@ export default function ForgotPasswordPage() {
 
   async function handleResend() {
     if (countdown > 0) return;
-    await forgotPassword(email.trim().toLowerCase()).catch(() => {});
-    setCountdown(60);
+    try {
+      await sendPasswordResetEmail(firebaseAuth, email.trim().toLowerCase(), {
+        url: `${window.location.origin}/auth/login`,
+      });
+      setCountdown(60);
+    } catch (err) {
+      setEmailError(getApiErrorMessage(err, 'Failed to resend reset email.'));
+    }
   }
 
   // ── State 2: Email Sent ──────────────────────────────────────────

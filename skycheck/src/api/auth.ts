@@ -27,6 +27,11 @@ export async function loginWithGoogle(idToken: string): Promise<AuthResponse> {
   return data;
 }
 
+export async function loginWithFirebase(idToken: string): Promise<AuthResponse> {
+  const { data } = await apiClient.post<AuthResponse>('/auth/firebase', { idToken });
+  return data;
+}
+
 // ── Verify Email ──────────────────────────────────────────────────
 export async function verifyEmail(token: string): Promise<AuthResponse> {
   const { data } = await apiClient.post<AuthResponse>('/auth/verify-email', { token });
