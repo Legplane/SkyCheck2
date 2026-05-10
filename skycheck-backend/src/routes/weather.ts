@@ -61,6 +61,21 @@ function stripPhPlaceSuffix(name: string): string {
     .trim();
 }
 
+function compactPlaceParts(parts: Array<string | undefined>): string {
+  const seen = new Set<string>();
+  return parts
+    .map((part) => stripPhPlaceSuffix(part ?? ''))
+    .filter(Boolean)
+    .filter((part) => {
+      const key = part.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .slice(0, 3)
+    .join(', ');
+}
+
 function pickDisplayLocation(input: {
   nominatim: string;
   accuWeatherLocality?: string;
@@ -97,6 +112,9 @@ async function resolvePhLocation(lat: number, lon: number): Promise<string> {
         town?:         string;
         village?:      string;
         suburb?:       string;
+        road?:         string;
+        pedestrian?:   string;
+        footway?:      string;
       };
     };
 
@@ -104,8 +122,13 @@ async function resolvePhLocation(lat: number, lon: number): Promise<string> {
     if (!a) return 'Your Area';
 
     // Pick the most specific readable PH locality first. This lets places
-    // like Old Cabalan show instead of only the wider Olongapo label.
-    const name =
+    // like Tabacuhan or Old Cabalan show instead of only the wider city label.
+    const street =
+      a.road ||
+      a.pedestrian ||
+      a.footway;
+
+    const locality =
       a.suburb         ||
       a.village        ||
       a.neighbourhood  ||
@@ -120,7 +143,13 @@ async function resolvePhLocation(lat: number, lon: number): Promise<string> {
       a.state          ||
       'Your Area';
 
-    return stripPhPlaceSuffix(name);
+    const city =
+      a.city ||
+      a.municipality ||
+      a.town ||
+      a.county;
+
+    return compactPlaceParts([street, locality, city]) || 'Your Area';
   } catch {
     return 'Your Area';
   }

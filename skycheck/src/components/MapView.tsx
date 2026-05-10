@@ -30,9 +30,9 @@ function FitBounds({ positions }: { positions: [number, number][] }) {
   useEffect(() => {
     if (positions.length >= 2) {
       const bounds = L.latLngBounds(positions);
-      map.fitBounds(bounds, { padding: [40, 40] });
+      map.fitBounds(bounds, { padding: [36, 36], maxZoom: 17 });
     } else if (positions.length === 1) {
-      map.setView(positions[0], 14);
+      map.setView(positions[0], 16);
     }
   }, [map, positions]);
   return null;
@@ -67,7 +67,7 @@ export default function MapView({ start, destination, waypoints, className }: Ma
     <div className={`rounded-xl overflow-hidden ${className ?? 'h-48'}`}>
       <MapContainer
         center={positions[0] ?? defaultCenter}
-        zoom={13}
+        zoom={15}
         style={{ height: '100%', width: '100%' }}
         zoomControl={false}
         scrollWheelZoom={false}

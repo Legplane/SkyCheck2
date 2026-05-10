@@ -46,9 +46,26 @@ function RequireAuth() {
 function AppShell() {
   const startGPS = useGeoStore((s) => s.startGPS);
 
-  // Start GPS once when the authenticated shell mounts
+  // Only auto-start when the browser already has permission. If permission is
+  // still in "prompt" state, the dashboard button becomes the user-triggered
+  // permission request, which is more reliable on desktop browsers.
   useEffect(() => {
-    startGPS();
+    let cancelled = false;
+
+    async function startIfAlreadyAllowed() {
+      if (!('permissions' in navigator)) return;
+      try {
+        const permission = await navigator.permissions.query({ name: 'geolocation' as PermissionName });
+        if (!cancelled && permission.state === 'granted') startGPS();
+      } catch {
+        // Some browsers do not expose geolocation permission status.
+      }
+    }
+
+    startIfAlreadyAllowed();
+    return () => {
+      cancelled = true;
+    };
   }, [startGPS]);
 
   const { data: alertGroupsRaw } = useQuery({

@@ -91,6 +91,25 @@ export const useGeoStore = create<GeoState>((set, get) => ({
       return;
     }
 
+    if ('permissions' in navigator) {
+      navigator.permissions.query({ name: 'geolocation' as PermissionName })
+        .then((permission) => {
+          if (permission.state === 'denied') {
+            _resolved = true;
+            _bestFix = null;
+            _stopGPS();
+            set({
+              status: 'denied',
+              reason: 'Location permission is blocked in your browser. Enable it in site settings.',
+              lat: OLONGAPO.lat,
+              lon: OLONGAPO.lon,
+              accuracy: 0,
+            });
+          }
+        })
+        .catch(() => undefined);
+    }
+
     _resolved = false;
     _bestFix = null;
     _stopGPS();
@@ -143,7 +162,7 @@ export const useGeoStore = create<GeoState>((set, get) => ({
       _resolved = true;
       _clearTimer();
       const reason =
-        err.code === 1 ? 'Location permission denied'
+        err.code === 1 ? 'Location permission is blocked in your browser. Enable it in site settings.'
         : err.code === 2 ? 'Location unavailable'
         : 'Location timed out';
       if (_bestFix && _bestFix.coords.accuracy <= MAX_TRUSTED_ACCURACY_M) {
