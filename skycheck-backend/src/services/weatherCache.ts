@@ -6,7 +6,7 @@
 // Open-Meteo's free tier rate-limits concurrent requests → 429.
 //
 // Solution: in-memory cache keyed by rounded coordinates (3dp ≈ 110m).
-// TTL: 5 minutes. Shared across all requests in the same process.
+// TTL: 15 minutes. Shared across all requests in the same process.
 // ─────────────────────────────────────────────────────────────────
 
 import type { CurrentWeather, HourlyForecast, RiskLevel } from '../types';
@@ -24,7 +24,7 @@ interface CachedWeather {
 export type WeatherCachePayload = Omit<CachedWeather, 'cachedAt'>;
 
 const cache = new Map<string, CachedWeather>();
-const TTL_MS = 5 * 60 * 1000;  // 5 minutes
+const TTL_MS = 15 * 60 * 1000;  // 15 minutes
 
 // Round to 3 decimal places (~110m precision) for cache key
 function cacheKey(lat: number, lon: number): string {

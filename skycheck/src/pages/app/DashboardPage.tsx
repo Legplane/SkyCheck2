@@ -58,15 +58,16 @@ export default function DashboardPage() {
   const { data, isLoading, isFetching, dataUpdatedAt } = useQuery({
     queryKey: ['weather', lat, lon],
     queryFn:  () => fetchWeather(lat, lon),
-    staleTime: 3 * 60 * 1000,
-    gcTime:    0,
+    staleTime: 15 * 60 * 1000,
+    gcTime:    60 * 60 * 1000,
     retry: isOnline ? 2 : 0,
     enabled: isOnline && isReady,
     // Keep weather stable while navigating tabs; refresh on interval or manual tap.
     refetchOnMount: false,
     refetchOnWindowFocus: false,
-    refetchOnReconnect: true,
-    refetchInterval: isOnline ? 5 * 60 * 1000 : false,
+    refetchOnReconnect: false,
+    refetchInterval: isOnline ? 15 * 60 * 1000 : false,
+    refetchIntervalInBackground: false,
   });
 
   const refreshWeatherAndLocation = useCallback(async () => {
@@ -80,6 +81,7 @@ export default function DashboardPage() {
       await qc.fetchQuery({
         queryKey: ['weather', la, lo],
         queryFn:  () => fetchWeather(la, lo),
+        staleTime: 0,
       });
       setLastManualRefreshAt(new Date().toISOString());
     } finally {

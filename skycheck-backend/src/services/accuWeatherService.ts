@@ -51,7 +51,14 @@ export interface AWHourly {
   WeatherIcon:                number;
   IconPhrase:                 string;
   Temperature:                { Value: number };
+  RealFeelTemperature?:       { Value: number };
+  RelativeHumidity?:          number;
   PrecipitationProbability?:  number;
+  RainProbability?:           number;
+  ThunderstormProbability?:   number;
+  TotalLiquid?:               { Value?: number };
+  Rain?:                      { Value?: number };
+  CloudCover?:                number;
 }
 
 export async function accuWeatherGeoposition(
@@ -88,7 +95,7 @@ export async function accuWeatherCurrent(locationKey: string, apiKey: string): P
 export async function accuWeatherHourly24(locationKey: string, apiKey: string): Promise<AWHourly[]> {
   try {
     const { data } = await axios.get<AWHourly[]>(`${AW_BASE}/forecasts/v1/hourly/24hour/${locationKey}`, {
-      params: { apikey: apiKey, metric: true },
+      params: { apikey: apiKey, metric: true, details: true },
       timeout: 8000,
     });
     return Array.isArray(data) ? data : [];

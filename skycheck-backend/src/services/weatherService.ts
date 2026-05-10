@@ -57,6 +57,11 @@ function clampPercent(value: number): number {
   return Math.min(100, Math.max(0, Math.round(value)));
 }
 
+function clampNumber(value: number, min: number, max: number): number {
+  if (!Number.isFinite(value)) return min;
+  return Math.min(max, Math.max(min, value));
+}
+
 function safeNumber(value: unknown, fallback = 0): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
 }
@@ -143,6 +148,53 @@ function calibratedRainProbability(args: {
   return clampPercent(calibrated);
 }
 
+function heatIndexC(tempC: number, humidity: number): number {
+  if (tempC < 27 || humidity < 40) return tempC;
+  const t = (tempC * 9) / 5 + 32;
+  const rh = clampPercent(humidity);
+  let hi = -42.379
+    + 2.04901523 * t
+    + 10.14333127 * rh
+    - 0.22475541 * t * rh
+    - 0.00683783 * t * t
+    - 0.05481717 * rh * rh
+    + 0.00122874 * t * t * rh
+    + 0.00085282 * t * rh * rh
+    - 0.00000199 * t * t * rh * rh;
+
+  if (rh < 13 && t >= 80 && t <= 112) {
+    hi -= ((13 - rh) / 4) * Math.sqrt((17 - Math.abs(t - 95)) / 17);
+  } else if (rh > 85 && t >= 80 && t <= 87) {
+    hi += ((rh - 85) / 10) * ((87 - t) / 5);
+  }
+
+  return roundOne(((hi - 32) * 5) / 9);
+}
+
+function calibratedFeelsLike(tempC: number, apparentC: number, humidity: number): number {
+  const heatIndex = heatIndexC(tempC, humidity);
+  if (tempC >= 27 && humidity >= 55) {
+    return roundOne(Math.max(apparentC, heatIndex));
+  }
+  return roundOne(apparentC);
+}
+
+function blendPercent(primary: number, secondary: number, primaryWeight = 0.6): number {
+  const p = clampPercent(primary);
+  const s = clampPercent(secondary);
+  return clampPercent((p * primaryWeight) + (s * (1 - primaryWeight)));
+}
+
+function accuWeatherRainProbability(h: AWHourly): number | undefined {
+  const candidates = [
+    h.RainProbability,
+    h.PrecipitationProbability,
+    h.ThunderstormProbability !== undefined ? Math.round(h.ThunderstormProbability * 0.8) : undefined,
+  ].filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+  if (candidates.length === 0) return undefined;
+  return Math.max(...candidates.map(clampPercent));
+}
+
 /** Max of sustained and gust @ 10 m — matches how conditions feel on a bike or when walking */
 export function effectiveWindKmH(w: CurrentWeather): number {
   return Math.round(Math.max(w.windSpeed, w.windGust ?? w.windSpeed));
@@ -160,16 +212,29 @@ function mergeAccuWeatherReadings(
 
   let rainProb = om.current.precipitationProbability;
   const nextHr = awHourly.find(h => h.EpochDateTime >= nowUnix);
-  if (nextHr?.PrecipitationProbability !== undefined && nextHr?.PrecipitationProbability !== null)
-    rainProb = Math.max(rainProb, nextHr.PrecipitationProbability);
+  const awRainProb = nextHr ? accuWeatherRainProbability(nextHr) : undefined;
+  if (awRainProb !== undefined) {
+    rainProb = blendPercent(awRainProb, rainProb, 0.65);
+  }
+
+  const awHourlyLiquid = nextHr
+    ? Math.max(
+      safeNumber(nextHr.TotalLiquid?.Value, 0),
+      safeNumber(nextHr.Rain?.Value, 0),
+    )
+    : 0;
 
   const current: CurrentWeather = {
     ...om.current,
     temperature:              roundOne(awCurrent.Temperature.Metric.Value),
-    feelsLike:                roundOne(awCurrent.RealFeelTemperature.Metric.Value),
+    feelsLike:                calibratedFeelsLike(
+      awCurrent.Temperature.Metric.Value,
+      awCurrent.RealFeelTemperature.Metric.Value,
+      awCurrent.RelativeHumidity,
+    ),
     humidity:                 awCurrent.RelativeHumidity,
     windSpeed:                Math.round(awCurrent.Wind.Speed.Metric.Value),
-    precipitation:            precipMm,
+    precipitation:            roundOne(Math.max(precipMm, awHourlyLiquid)),
     precipitationProbability: rainProb,
     weatherCode:              wmo,
     weatherLabel:             awCurrent.WeatherText?.trim() || getWeatherLabel(wmo),
@@ -182,6 +247,16 @@ function mergeAccuWeatherReadings(
   for (const h of awHourly) {
     if (h.EpochDateTime < nowUnix) continue;
     const code = accuWeatherIconToWmo(h.WeatherIcon);
+    const omSameHour = om.hourly.find(row => row.time === new Date(h.EpochDateTime * 1000).toLocaleTimeString('en-PH', {
+      hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Manila',
+    }));
+    const awProb = accuWeatherRainProbability(h);
+    const omProb = omSameHour?.precipitationProbability ?? 0;
+    const liquidMm = Math.max(safeNumber(h.TotalLiquid?.Value, 0), safeNumber(h.Rain?.Value, 0));
+    const rainProbability = awProb !== undefined
+      ? blendPercent(awProb, omProb, liquidMm > 0 ? 0.75 : 0.65)
+      : omProb;
+
     hourly.push({
       time: new Date(h.EpochDateTime * 1000).toLocaleTimeString('en-PH', {
         hour:   '2-digit',
@@ -192,7 +267,7 @@ function mergeAccuWeatherReadings(
       temperature: roundOne(h.Temperature.Value),
       weatherCode: code,
       weatherIcon: getWeatherIcon(code),
-      precipitationProbability: h.PrecipitationProbability ?? 0,
+      precipitationProbability: rainProbability,
     });
     if (hourly.length >= 6) break;
   }
@@ -217,7 +292,11 @@ function mergeAccuWeatherCurrentOnly(base: CurrentWeather, aw: AWCurrent): Curre
   return {
     ...base,
     temperature:   roundOne(aw.Temperature.Metric.Value),
-    feelsLike:       roundOne(aw.RealFeelTemperature.Metric.Value),
+    feelsLike:       calibratedFeelsLike(
+      aw.Temperature.Metric.Value,
+      aw.RealFeelTemperature.Metric.Value,
+      aw.RelativeHumidity,
+    ),
     humidity:        aw.RelativeHumidity,
     windSpeed:       Math.round(aw.Wind.Speed.Metric.Value),
     precipitation:   precipMm,
@@ -312,7 +391,11 @@ async function fetchOpenMeteoForecast(lat: number, lon: number): Promise<{
 
   const current: CurrentWeather = {
     temperature:              roundOne(safeNumber(c.temperature_2m)),
-    feelsLike:                roundOne(nearestFeelsLike),
+    feelsLike:                calibratedFeelsLike(
+      safeNumber(c.temperature_2m),
+      nearestFeelsLike,
+      nearestHumidity,
+    ),
     humidity:                 clampPercent(nearestHumidity),
     precipitationProbability: clampPercent(rainProbability),
     precipitation:            roundOne(nearestPrecip),
