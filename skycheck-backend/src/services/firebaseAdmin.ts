@@ -1,4 +1,5 @@
 import admin from 'firebase-admin';
+import type { DecodedIdToken } from 'firebase-admin/auth';
 
 function privateKey(): string | undefined {
   const raw = process.env.FIREBASE_PRIVATE_KEY;
@@ -27,7 +28,7 @@ export function firebaseAdmin(): admin.app.App | null {
   });
 }
 
-export async function verifyFirebaseIdToken(idToken: string) {
+export async function verifyFirebaseIdToken(idToken: string): Promise<DecodedIdToken> {
   const app = firebaseAdmin();
   if (!app) throw new Error('Firebase Admin SDK is not configured.');
   return app.auth().verifyIdToken(idToken);
