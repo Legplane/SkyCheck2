@@ -36,7 +36,7 @@ export async function evaluateCombinedRisk(
   const elevation               = floodResult.status === 'fulfilled' ? floodResult.value.elevation : undefined;
 
   const overall = maxRisk(weatherRisk, trafficRisk, floodRisk);
-  const basis   = buildBasisText(current, weatherRisk, trafficRisk, floodRisk, trafficRatio, elevation);
+  const basis   = buildBasisText(current, weatherRisk, trafficRisk, floodRisk, trafficRatio, elevation, trafficSource);
 
   return {
     overall, weather: weatherRisk, traffic: trafficRisk, flood: floodRisk,
@@ -82,7 +82,7 @@ export async function evaluateRouteCombinedRisk(
   const elevation               = floodResult.status === 'fulfilled' ? floodResult.value.elevation : undefined;
 
   const overall = maxRisk(weatherRisk, trafficRisk, floodRisk);
-  const basis   = buildBasisText(worstWeather, weatherRisk, trafficRisk, floodRisk, trafficRatio, elevation);
+  const basis   = buildBasisText(worstWeather, weatherRisk, trafficRisk, floodRisk, trafficRatio, elevation, trafficSource);
 
   return {
     overall, weather: weatherRisk, traffic: trafficRisk, flood: floodRisk,
@@ -99,6 +99,7 @@ function buildBasisText(
   floodRisk:   RiskLevel,
   trafficRatio?: number,
   elevation?: number,
+  trafficSource?: 'tomtom' | 'heuristic',
 ): string {
   const parts: string[] = [];
 
@@ -107,7 +108,8 @@ function buildBasisText(
   }
 
   if (trafficRisk !== 'LOW' && trafficRisk !== 'UNKNOWN' && trafficRatio !== undefined) {
-    parts.push(`Traffic flow ${Math.round(trafficRatio * 100)}%`);
+    const label = trafficSource === 'tomtom' ? 'Live traffic flow' : 'Estimated traffic flow';
+    parts.push(`${label} ${Math.round(trafficRatio * 100)}%`);
   }
 
   if (floodRisk !== 'LOW' && elevation !== undefined && elevation >= 0) {

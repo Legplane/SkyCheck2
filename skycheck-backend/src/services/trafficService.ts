@@ -18,6 +18,8 @@ import { RISK } from '../constants/risk';
 // ─────────────────────────────────────────────────────────────────
 
 const TOMTOM_BASE = 'https://api.tomtom.com/traffic/services/4/flowSegmentData/relative0/10/json';
+const TRAFFIC_TTL_MS = 10 * 60 * 1000;
+const trafficCache = new Map<string, { cachedAt: number; result: TrafficResult }>();
 
 interface TomTomFlowResponse {
   flowSegmentData: {
@@ -31,7 +33,10 @@ interface TomTomFlowResponse {
 }
 
 export async function fetchTrafficLevel(lat: number, lon: number): Promise<TrafficResult> {
-  const TOMTOM_KEY = process.env.TOMTOM_API_KEY;
+  const cached = getCachedTraffic(lat, lon);
+  if (cached) return cached;
+
+  const TOMTOM_KEY = cleanTomTomKey(process.env.TOMTOM_API_KEY);
 
   if (TOMTOM_KEY) {
     try {
@@ -43,31 +48,35 @@ export async function fetchTrafficLevel(lat: number, lon: number): Promise<Traff
       const { currentSpeed, freeFlowSpeed, confidence, roadClosure } = data.flowSegmentData;
 
       if (confidence < 0.3 || roadClosure) {
-        return rushHourFallback('low confidence');
+        return rushHourFallback('low confidence', lat, lon);
       }
 
       const ratio = freeFlowSpeed > 0 ? currentSpeed / freeFlowSpeed : 1;
-      return {
+      return cacheTraffic(lat, lon, {
         congestionRatio: Math.round(ratio * 100) / 100,
         currentSpeed:    Math.round(currentSpeed),
         freeFlowSpeed:   Math.round(freeFlowSpeed),
         riskLevel:       trafficRiskFromRatio(ratio),
         source:          'tomtom',
-      };
+      });
     } catch (err: unknown) {
       const status = axios.isAxiosError(err) ? err.response?.status : null;
-      if (status === 404) return rushHourFallback('no road segment at coordinates');
+      if (status === 404) return rushHourFallback('no road segment at coordinates', lat, lon);
       if (status === 429) {
         console.warn('[Traffic] TomTom daily limit exceeded — using rush-hour fallback');
-        return rushHourFallback('daily limit reached');
+        return rushHourFallback('daily limit reached', lat, lon);
       }
-      console.error('[Traffic] TomTom error:', err);
-      return rushHourFallback('TomTom API unavailable');
+      if (status === 401 || status === 403) {
+        console.warn('[Traffic] TomTom key rejected - using rush-hour fallback');
+        return rushHourFallback('invalid API key', lat, lon);
+      }
+      console.warn('[Traffic] TomTom unavailable - using rush-hour fallback');
+      return rushHourFallback('TomTom API unavailable', lat, lon);
     }
   }
 
   console.warn('[Traffic] TOMTOM_API_KEY not set — using rush-hour heuristic');
-  return rushHourFallback('no API key configured');
+  return rushHourFallback('no API key configured', lat, lon);
 }
 
 // ─────────────────────────────────────────────────────────────────
@@ -82,6 +91,32 @@ export async function fetchTrafficLevel(lat: number, lon: number): Promise<Traff
 //  16:30 – 20:00  Evening rush    → HIGH
 //  20:00 – 06:30  Night           → LOW
 // ─────────────────────────────────────────────────────────────────
+function cleanTomTomKey(value: string | undefined): string | null {
+  const key = value?.trim();
+  if (!key || key === 'your_tomtom_api_key_here') return null;
+  return key;
+}
+
+function trafficCacheKey(lat: number, lon: number): string {
+  return `${Math.round(lat * 1000) / 1000},${Math.round(lon * 1000) / 1000}`;
+}
+
+function getCachedTraffic(lat: number, lon: number): TrafficResult | null {
+  const key = trafficCacheKey(lat, lon);
+  const entry = trafficCache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.cachedAt > TRAFFIC_TTL_MS) {
+    trafficCache.delete(key);
+    return null;
+  }
+  return entry.result;
+}
+
+function cacheTraffic(lat: number, lon: number, result: TrafficResult): TrafficResult {
+  trafficCache.set(trafficCacheKey(lat, lon), { cachedAt: Date.now(), result });
+  return result;
+}
+
 function manilaWeekend(): boolean {
   const wd = new Intl.DateTimeFormat('en-US', {
     timeZone: 'Asia/Manila',
@@ -90,7 +125,7 @@ function manilaWeekend(): boolean {
   return wd === 'Sat' || wd === 'Sun';
 }
 
-function rushHourFallback(reason: string): TrafficResult {
+function rushHourFallback(reason: string, lat = 14.8386, lon = 120.2842): TrafficResult {
   const now      = new Date();
   const phtHour  = (now.getUTCHours() + 8) % 24;
   const phtMin   = now.getUTCMinutes();
@@ -119,14 +154,14 @@ function rushHourFallback(reason: string): TrafficResult {
 
   console.info(`[Traffic] Heuristic (${reason}) → ${riskLevel} @ PHT ${phtHour}:${String(Math.round(phtMin)).padStart(2,'0')}${weekend ? ' (weekend)' : ''}`);
 
-  return {
+  return cacheTraffic(lat, lon, {
     congestionRatio,
     currentSpeed: 0,
     freeFlowSpeed: 0,
     riskLevel,
     source: 'heuristic',
     label: reason,
-  };
+  });
 }
 
 function trafficRiskFromRatio(ratio: number): RiskLevel {
