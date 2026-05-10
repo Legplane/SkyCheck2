@@ -60,6 +60,10 @@ export default function RouteCard({ route, onEdit, onDelete }: RouteCardProps) {
         <SubRiskRow risks={{ weather: route.risk.weather, traffic: route.risk.traffic, flood: route.risk.flood }} />
       </div>
 
+      {route.risk.basis && (
+        <p className="text-[10px] text-gray-500 leading-relaxed">{route.risk.basis}</p>
+      )}
+
       {/* Route stats + fare */}
       <div className="flex items-center gap-3 pt-1 border-t border-gray-50">
         <span className="text-xs text-gray-500">{formatDistance(route.distanceKm)}</span>

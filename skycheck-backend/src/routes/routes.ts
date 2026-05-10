@@ -4,6 +4,8 @@ import { requireAuth } from '../middleware/auth';
 import { calculateRoute } from '../services/routeCalcService';
 import { fetchWeatherData } from '../services/weatherService';
 import { evaluateCombinedRisk, evaluateRouteCombinedRisk } from '../services/combinedRiskService';
+import { fetchTrafficLevel } from '../services/trafficService';
+import { evaluateRouteFloodRisk } from '../services/floodService';
 import { estimateMaximFare } from '../utils/maximFare';
 import { RISK } from '../constants/risk';
 
@@ -25,12 +27,30 @@ async function evalRouteRisk(
 
   // If both fail, fall back gracefully
   if (startResult.status === 'rejected' && destResult.status === 'rejected') {
+    const [trafficResult, floodResult] = await Promise.allSettled([
+      fetchTrafficLevel(startLat, startLon),
+      evaluateRouteFloodRisk(startLat, startLon, destLat, destLon, 0, 0),
+    ]);
+
+    const weather = 'UNKNOWN' as const;
+    const traffic = trafficResult.status === 'fulfilled' ? trafficResult.value.riskLevel : 'UNKNOWN';
+    const flood = floodResult.status === 'fulfilled' ? floodResult.value.riskLevel : 'UNKNOWN';
+    const overall = [traffic, flood].includes('HIGH')
+      ? 'HIGH'
+      : [traffic, flood].includes('MEDIUM')
+        ? 'MEDIUM'
+        : traffic === 'LOW' || flood === 'LOW'
+          ? 'LOW'
+          : 'UNKNOWN';
+
     return {
-      weather: 'UNKNOWN' as const,
-      traffic: 'UNKNOWN' as const,
-      flood:   'UNKNOWN' as const,
-      overall: 'UNKNOWN' as const,
-      basis:   'Weather data unavailable',
+      weather,
+      traffic,
+      flood,
+      overall,
+      basis: traffic !== 'UNKNOWN' || flood !== 'UNKNOWN'
+        ? 'Weather unavailable; showing available traffic and flood checks'
+        : 'Weather data unavailable',
     };
   }
 
@@ -68,6 +88,20 @@ function mapRiskToRouteUpdate(risk: {
     lastRiskBasis:   risk.basis,
     lastRiskAt:      new Date(),
   };
+}
+
+function routeHasUnknownRisk(route: {
+  lastWeatherRisk: string;
+  lastTrafficRisk: string;
+  lastFloodRisk: string;
+  lastOverallRisk: string;
+}): boolean {
+  return [
+    route.lastWeatherRisk,
+    route.lastTrafficRisk,
+    route.lastFloodRisk,
+    route.lastOverallRisk,
+  ].some(value => value === 'UNKNOWN');
 }
 
 // ── Serialize route for API response ─────────────────────────────
@@ -140,7 +174,7 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
       }
 
       const ageMs = currentRoute.lastRiskAt ? now - currentRoute.lastRiskAt.getTime() : Number.POSITIVE_INFINITY;
-      if (ageMs < REFRESH_MS) return currentRoute;
+      if (ageMs < REFRESH_MS && !routeHasUnknownRisk(currentRoute)) return currentRoute;
 
       try {
         const latestRisk = await evalRouteRisk(
