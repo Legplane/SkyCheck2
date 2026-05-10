@@ -129,7 +129,7 @@ SkyCheck/                        ← Root folder (open this in VS Code)
 
 ## 3. API Keys You Need
 
-You need **4 API keys** total. All have free tiers, none require payment info except where noted.
+You need **4 external service keys** plus **Firebase project configuration**. All have free tiers, none require payment info except where noted.
 
 ### Key 1 — Neon.tech PostgreSQL (Required)
 
@@ -178,7 +178,25 @@ You need **4 API keys** total. All have free tiers, none require payment info ex
 3. Paste into **both** `skycheck/.env` as `VITE_MAPTILER_KEY`
    AND `skycheck-backend/.env` as `MAPTILER_KEY`
 
-> **If you skip this:** The map in the Add Route screen will use bare OpenStreetMap tiles instead. The app fully works without it.
+> **If you skip this:** The map in the Add Route screen will use bare OpenStreetMap tiles instead. The app fully works without it, but MapTiler gives cleaner street-level map visuals.
+
+### Firebase project configuration (Required for authentication)
+
+**Cost:** Free tier available
+**Get it:** https://console.firebase.google.com
+
+1. Create or open your Firebase project
+2. Go to **Authentication** → **Sign-in method**
+3. Enable **Email/Password** and **Google**
+4. Go to **Project settings** → **General** → **Your apps** → create/select a Web app
+5. Copy the Firebase SDK config into `skycheck/.env` as the `VITE_FIREBASE_*` values
+6. Go to **Project settings** → **Service accounts** → generate a new private key
+7. Put these values in `skycheck-backend/.env`:
+   - `FIREBASE_PROJECT_ID`
+   - `FIREBASE_CLIENT_EMAIL`
+   - `FIREBASE_PRIVATE_KEY`
+
+For deployment, add your Vercel domain and localhost domains in Firebase Authentication authorized domains.
 
 ### Keys NOT needed (already free, no registration)
 
@@ -320,6 +338,12 @@ cp .env.example .env
 Edit `skycheck/.env`:
 ```env
 VITE_API_BASE_URL=http://localhost:3000
+VITE_FIREBASE_API_KEY=your_firebase_api_key
+VITE_FIREBASE_AUTH_DOMAIN=your_project.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=your_project_id
+VITE_FIREBASE_APP_ID=your_firebase_app_id
+VITE_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
+VITE_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
 VITE_MAPTILER_KEY=your_maptiler_key_here    ← optional
 ```
 
@@ -397,7 +421,7 @@ In VS Code with the workspace open:
 
 ---
 
-## 9. Testing on a Physical Phone
+## 9. Testing GPS and PWA on a Physical Phone
 
 To test on your actual phone (Android/iPhone on the same WiFi):
 
@@ -447,7 +471,24 @@ http://192.168.1.5:5173
 
 > **Note:** PWA service worker only activates on HTTPS in production. On local network (HTTP), the app still works but won't be installable on some iOS versions. For full PWA install on iOS, use ngrok (see below).
 
-### Step 9f — Using ngrok for HTTPS (optional but recommended for iOS)
+### Step 9f - GPS accuracy behavior
+
+SkyCheck asks the user to grant GPS access on the Dashboard.
+
+Expected behavior:
+
+- If GPS succeeds, the dashboard uses the user's live coordinates and shows a green `Live +/-Xm` badge.
+- If GPS fails, is blocked, or only returns a very rough PC/laptop estimate, the app automatically switches to `Subic, Zambales, Central Luzon, PH`.
+- The app fetches weather/risk data for Subic using fallback coordinates `14.8799, 120.2343`.
+- The user sees a warning that precise location is unavailable and that mobile GPS is recommended for better accuracy.
+
+For best testing:
+
+- Test on a phone outdoors or near a window.
+- In Chrome/Edge, make sure the site permission for Location is set to **Allow**.
+- After deploying a new GPS fix, hard refresh the browser or reinstall/refresh the PWA so the old service worker does not keep stale code.
+
+### Step 9g — Using ngrok for HTTPS (optional but recommended for iOS)
 
 ```bash
 # Install ngrok: https://ngrok.com/download
@@ -467,6 +508,12 @@ Copy the `https://xxxx.ngrok.io` URL. Update both:
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `VITE_API_BASE_URL` | Yes | Backend URL. `http://localhost:3000` for local dev |
+| `VITE_FIREBASE_API_KEY` | Yes | Firebase web app API key |
+| `VITE_FIREBASE_AUTH_DOMAIN` | Yes | Firebase Auth domain |
+| `VITE_FIREBASE_PROJECT_ID` | Yes | Firebase project ID |
+| `VITE_FIREBASE_APP_ID` | Yes | Firebase web app ID |
+| `VITE_FIREBASE_STORAGE_BUCKET` | Yes | Firebase storage bucket from web config |
+| `VITE_FIREBASE_MESSAGING_SENDER_ID` | Yes | Firebase sender ID from web config |
 | `VITE_MAPTILER_KEY` | No | MapTiler API key for map tiles in route preview |
 
 ### Backend (`skycheck-backend/.env`)
@@ -481,6 +528,9 @@ Copy the `https://xxxx.ngrok.io` URL. Update both:
 | `FRONTEND_URL` | Yes | Frontend URL for CORS (`http://localhost:5173` local) |
 | `EMAIL_USER` | Yes | Gmail address for sending emails |
 | `EMAIL_PASS` | Yes | Gmail App Password (16 chars) |
+| `FIREBASE_PROJECT_ID` | Yes | Firebase Admin project ID |
+| `FIREBASE_CLIENT_EMAIL` | Yes | Firebase service account client email |
+| `FIREBASE_PRIVATE_KEY` | Yes | Firebase service account private key |
 | `ORS_API_KEY` | Yes | OpenRouteService API key |
 | `TOMTOM_API_KEY` | Yes | TomTom API key for traffic data |
 | `MAPTILER_KEY` | No | MapTiler key (also set in frontend) |
@@ -595,6 +645,24 @@ If even OSM tiles don't load:
 1. Check browser console for CORS or 404 errors on tile requests
 2. Try adding `VITE_MAPTILER_KEY` to `skycheck/.env`
 
+### GPS button does not open a browser prompt
+
+This usually means location permission is already blocked, the browser is using a rough PC/laptop estimate, or the page is not running in a secure context.
+
+Check these:
+
+1. Use HTTPS in production. Browser geolocation is restricted on insecure pages, except localhost.
+2. Click the lock/settings icon beside the URL and set **Location** to **Allow**.
+3. Refresh the page after changing permission.
+4. On mobile PWA, close and reopen the installed app after deployment so the service worker updates.
+5. On PC/laptop, the browser may only provide rough Wi-Fi/IP location. If it cannot provide precise coordinates, SkyCheck falls back to Subic automatically.
+
+Expected fallback result:
+
+- Home location shows `Subic, Zambales, Central Luzon, PH`.
+- Weather is fetched using Subic fallback coordinates.
+- The user sees a warning recommending the mobile version for better GPS accuracy.
+
 ### ❌ Address search (Nominatim) returns no results
 
 Nominatim has a **1 request/second** rate limit. If you type too fast:
@@ -686,7 +754,7 @@ Here's why each external service was chosen:
 | Geocoding | **Nominatim** | Google Places, MapTiler | Completely free OSM data; good PH address coverage |
 | Map Tiles | **MapTiler** | Google Maps, Mapbox | 100k/month free; prettier than bare OSM; no credit card |
 | Database | **Neon.tech** | Supabase, Railway, local PG | Best free tier (3GB, auto-pause); fastest setup |
-| Auth | **Custom JWT** | Firebase Auth, Supabase Auth | Full control; no 3rd party dependency; learning value |
+| Auth | **Firebase Auth + backend JWT** | Supabase Auth, custom-only auth | Reliable email/password and Google login, Firebase reset emails, backend-controlled app sessions |
 
 ---
 
@@ -760,16 +828,19 @@ SkyCheck requests the device's GPS coordinates on the Dashboard screen. Here is 
 - A green **Live** badge appears next to the city name
 - The `queryKey` includes real coordinates so React Query caches per-location
 
-### Permission denied or unavailable
-- An amber banner is shown: "Location unavailable — using Olongapo weather"
-- The app falls back to **14.8292, 120.2842** (Gordon College area) automatically
-- The user can tap **Allow GPS** in the banner to re-trigger the permission prompt
+### Permission denied, unavailable, or too imprecise
+- An amber banner notifies the user that precise location could not be found
+- The Home screen location label changes to **Subic, Zambales, Central Luzon, PH**
+- The app falls back to **14.8799, 120.2343** automatically
+- Weather and risk data are fetched for the Subic fallback area
+- The banner recommends using the mobile version for better GPS accuracy
+- The user can tap **Allow GPS** in the banner to retry
 
 ### Testing GPS in Chrome DevTools (no phone needed)
 1. Open DevTools → three-dot menu → **More tools** → **Sensors**
 2. Under Location, select a preset or type custom coordinates:
    - Olongapo:  `14.8292, 120.2842`
-   - Subic:     `14.8580, 120.2350`
+   - Subic:     `14.8799, 120.2343`
    - Angeles:   `15.1450, 120.5930`
    - Bataan:    `14.6417, 120.4817`
    - Pampanga:  `15.0794, 120.6200`

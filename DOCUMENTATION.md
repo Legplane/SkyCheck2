@@ -101,6 +101,7 @@ Main frontend responsibilities:
 - Persisting selected query data for offline mode
 - Registering the PWA service worker
 - Showing responsive layouts for mobile and desktop
+- Requesting GPS access and applying the Subic fallback when precise location is unavailable
 
 Important frontend tools:
 
@@ -188,6 +189,26 @@ Weather behavior:
 - If AccuWeather quota/key fails, the app falls back to Open-Meteo when available.
 - Weather is cached server-side to reduce API usage.
 
+### Location behavior for weather
+
+The Dashboard first asks the user to grant GPS access.
+
+If precise GPS succeeds:
+
+- Weather is fetched for the user's current coordinates.
+- The dashboard shows the geocoded place name.
+- A `Live +/-Xm` badge communicates the browser-reported accuracy.
+
+If precise GPS fails, is blocked, unsupported, or too imprecise:
+
+- SkyCheck automatically uses the fallback area: `Subic, Zambales, Central Luzon, PH`.
+- Fallback coordinates are `14.8799, 120.2343`.
+- The Home screen location label changes to `Subic, Zambales, Central Luzon, PH`.
+- Weather and risk information are fetched for the fallback coordinates.
+- The user is notified that precise location was unavailable and that mobile GPS is recommended for better accuracy.
+
+This keeps the app useful on PC/laptop devices where browsers may only provide rough Wi-Fi/IP-based location.
+
 ## 10. Traffic System
 
 SkyCheck uses TomTom Traffic Flow API when available.
@@ -253,6 +274,8 @@ Route risk includes:
 - Risk basis explanation
 
 Saved routes are refreshed by the backend and cached on the frontend. Offline mode can show the last cached saved routes, but adding, editing, and deleting routes require internet.
+
+The route preview map uses Leaflet with MapTiler street tiles when a key is configured, otherwise it falls back to OpenStreetMap tiles. The map now zooms closer for route endpoints so nearby streets and barangay-level detail are easier to inspect.
 
 ## 13. Go / No-Go Engine
 
@@ -393,6 +416,8 @@ FRONTEND_URL=
 FIREBASE_PROJECT_ID=
 FIREBASE_CLIENT_EMAIL=
 FIREBASE_PRIVATE_KEY=
+EMAIL_USER=
+EMAIL_PASS=
 ORS_API_KEY=
 TOMTOM_API_KEY=
 ACCUWEATHER_API_KEY=
@@ -430,8 +455,15 @@ Accuracy is improved by:
 - Using heat index instead of temperature alone
 - Adding traffic and flood context
 - Showing fallback estimates when live APIs fail
+- Using live GPS coordinates when available, with automatic Subic fallback when precise location cannot be trusted
 
 The app should be presented as a support tool that helps students make safer decisions, not as an absolute guarantee.
+
+Location accuracy depends on the device:
+
+- Mobile phones are usually more accurate because they have GPS hardware.
+- PC/laptop browsers may use Wi-Fi/IP estimates, which can be rough or unavailable.
+- When the app cannot obtain precise coordinates, it avoids showing a fake exact location and clearly switches to the Subic fallback area.
 
 ## 21. Presentation Questions and Answers
 
@@ -463,6 +495,10 @@ Yes. Many apps show weather or traffic separately. SkyCheck combines those with 
 
 It is more accurate than relying on one simple weather reading because it combines multiple factors. However, it should still be treated as a decision-support tool, not an official emergency warning system.
 
+### What happens if GPS fails?
+
+The app automatically uses `Subic, Zambales, Central Luzon, PH` as a fallback location, fetches weather and risk data for that area, and notifies the user that mobile GPS is recommended for better accuracy.
+
 ## 22. Future Improvements
 
 Possible future improvements:
@@ -474,4 +510,3 @@ Possible future improvements:
 - Historical commute risk analytics
 - Better offline syncing for health checks
 - Support for more campuses
-

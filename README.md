@@ -14,8 +14,10 @@ The app combines weather, traffic, flood risk, route data, school advisories, go
 - Firebase authentication with email/password and Google sign-in
 - Email verification and password reset
 - Real-time weather dashboard using Open-Meteo with optional AccuWeather fallback
+- GPS-based location tracking with automatic Subic fallback when precise location is unavailable
 - Live or estimated traffic risk using TomTom Traffic API with rush-hour fallback
 - Route saving with distance, travel time, fare estimate, and risk status
+- Street-level route map preview using Leaflet, MapTiler/OpenStreetMap tiles, and closer route zoom
 - Flood risk estimation using elevation and rain indicators
 - Go / No-Go decision engine based on health, weather, traffic, flood, heat, and advisories
 - Daily health check
@@ -119,6 +121,8 @@ FRONTEND_URL=https://sky-check2-hcxk.vercel.app
 FIREBASE_PROJECT_ID=
 FIREBASE_CLIENT_EMAIL=
 FIREBASE_PRIVATE_KEY=
+EMAIL_USER=
+EMAIL_PASS=
 ORS_API_KEY=
 TOMTOM_API_KEY=
 ACCUWEATHER_API_KEY=
@@ -154,6 +158,20 @@ When offline, users cannot:
 - Add, edit, or delete routes
 - Fetch new weather, traffic, flood, or advisory data
 - Search new addresses
+
+## GPS And Location Behavior
+
+SkyCheck first asks the user to grant GPS access. If precise tracking succeeds, the dashboard fetches weather and risk information for the user's live coordinates and shows a `Live +/-Xm` badge.
+
+If precise tracking fails, is blocked, or is unavailable on a PC/laptop, the app automatically uses the Subic fallback coordinates:
+
+- Fallback location: `Subic, Zambales, Central Luzon, PH`
+- Fallback coordinates: `14.8799, 120.2343`
+- The dashboard location label changes to the fallback area.
+- Weather, traffic, flood, and risk data are fetched for the fallback area.
+- The user is notified that precise location could not be found and that mobile GPS is recommended for better accuracy.
+
+Mobile devices are generally more accurate because they usually have real GPS hardware. PC/laptop browsers often depend on Wi-Fi or IP-based location, which can be rough or unavailable.
 
 ## Documentation
 
