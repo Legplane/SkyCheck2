@@ -10,7 +10,7 @@ const router = Router();
 // GET /weather?lat=&lon=
 // Returns localised weather for the exact GPS coords sent by the
 // frontend. The frontend always sends real GPS coords (or the
-// Olongapo fallback if GPS is denied) — never hardcoded defaults.
+// Subic fallback if GPS is denied) — never hardcoded defaults.
 // ─────────────────────────────────────────────────────────────────
 
 router.get('/', requireAuth, async (req: Request, res: Response) => {
@@ -115,8 +115,8 @@ async function resolvePhLocation(lat: number, lon: number): Promise<string> {
     const a = data.address;
     if (!a) return 'Your Area';
 
-    // Return one clean label only. Prefer barangay/locality names such as
-    // Tabacuhan or Old Cabalan, then fall back to street/city if needed.
+    // Return one clean label only. Prefer road/street names such as
+    // Tabacuhan Street over subdivision/locality labels when available.
     const street =
       a.road ||
       a.pedestrian ||
@@ -146,7 +146,7 @@ async function resolvePhLocation(lat: number, lon: number): Promise<string> {
       a.town ||
       a.county;
 
-    return firstPlaceName([locality, street, city, a.state]) || 'Your Area';
+    return firstPlaceName([street, locality, city, a.state]) || 'Your Area';
   } catch {
     return 'Your Area';
   }

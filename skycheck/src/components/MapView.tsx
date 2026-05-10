@@ -48,8 +48,8 @@ interface MapViewProps {
 export default function MapView({ start, destination, waypoints, className }: MapViewProps) {
   const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_KEY;
 
-  // Default center: Olongapo City, PH
-  const defaultCenter: [number, number] = [14.8292, 120.2842];
+  // Default center: Subic, PH
+  const defaultCenter: [number, number] = [14.8799, 120.2343];
 
   const positions: [number, number][] = [];
   if (start) positions.push([start.lat, start.lon]);

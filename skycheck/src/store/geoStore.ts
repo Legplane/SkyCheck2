@@ -5,7 +5,7 @@ import { create } from 'zustand';
 // GPS starts once in AppShell and never restarts on route change.
 // ─────────────────────────────────────────────────────────────────
 
-export const OLONGAPO = { lat: 14.8292, lon: 120.2842 };
+export const FALLBACK_LOCATION = { lat: 14.8799, lon: 120.2343, label: 'Subic' };
 
 export type GeoStatus = 'idle' | 'requesting' | 'granted' | 'denied' | 'unavailable';
 
@@ -76,8 +76,8 @@ function _stopGPS() {
 
 export const useGeoStore = create<GeoState>((set, get) => ({
   status:   'idle',
-  lat:      OLONGAPO.lat,
-  lon:      OLONGAPO.lon,
+  lat:      FALLBACK_LOCATION.lat,
+  lon:      FALLBACK_LOCATION.lon,
   accuracy: 0,
   reason:   '',
 
@@ -109,8 +109,8 @@ export const useGeoStore = create<GeoState>((set, get) => ({
           set({
             status: 'denied',
             reason: 'Precise location unavailable',
-            lat: OLONGAPO.lat,
-            lon: OLONGAPO.lon,
+            lat: FALLBACK_LOCATION.lat,
+            lon: FALLBACK_LOCATION.lon,
             accuracy: _bestFix ? Math.round(_bestFix.coords.accuracy) : 0,
           });
         }
@@ -154,8 +154,8 @@ export const useGeoStore = create<GeoState>((set, get) => ({
         set({
           status: 'denied',
           reason,
-          lat: OLONGAPO.lat,
-          lon: OLONGAPO.lon,
+          lat: FALLBACK_LOCATION.lat,
+          lon: FALLBACK_LOCATION.lon,
           accuracy: _bestFix ? Math.round(_bestFix.coords.accuracy) : 0,
         });
       }
@@ -179,7 +179,7 @@ export const useGeoStore = create<GeoState>((set, get) => ({
     _resolved = true;
     _bestFix = null;
     _stopGPS();
-    set({ status: 'denied', reason: 'Skipped', lat: OLONGAPO.lat, lon: OLONGAPO.lon, accuracy: 0 });
+    set({ status: 'denied', reason: 'Skipped', lat: FALLBACK_LOCATION.lat, lon: FALLBACK_LOCATION.lon, accuracy: 0 });
   },
 
   refreshLocation: () => new Promise<boolean>((resolve) => {

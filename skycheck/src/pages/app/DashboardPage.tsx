@@ -4,7 +4,7 @@ import { RefreshCw, MapPin, Bell, Menu, Navigation, AlertTriangle, ShieldCheck, 
 import { Link } from 'react-router-dom';
 import { fetchWeather } from '../../api';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
-import { useGeoStore, selectIsLive, selectIsReady } from '../../store/geoStore';
+import { FALLBACK_LOCATION, useGeoStore, selectIsLive, selectIsReady } from '../../store/geoStore';
 import OfflineBanner from '../../components/OfflineBanner';
 import RiskBadge from '../../components/RiskBadge';
 import SubRiskRow from '../../components/SubRiskRow';
@@ -123,7 +123,7 @@ export default function DashboardPage() {
             Allow Location Access
           </button>
           <button onClick={skipGPS} className="text-xs text-gray-400 underline">
-            Skip — use Olongapo weather
+            Skip — use {FALLBACK_LOCATION.label} weather
           </button>
         </div>
       </div>
@@ -316,7 +316,7 @@ function LocationBanner({ reason, onRetry }: { reason: string; onRetry: () => vo
     <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 flex items-start gap-2">
       <AlertTriangle size={14} className="text-amber-600 shrink-0" />
       <span className="text-xs text-amber-800 flex-1 min-w-0 leading-snug break-words">
-        {reason || 'Location unavailable'} — using Olongapo weather
+        {reason || 'Location unavailable'} — using {FALLBACK_LOCATION.label} weather
       </span>
       <button onClick={onRetry}
         className="text-xs font-semibold text-amber-700 underline shrink-0">
