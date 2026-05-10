@@ -1,7 +1,10 @@
+import { useQuery } from '@tanstack/react-query';
 import { Pencil, Trash2, MapPin, Clock, Navigation } from 'lucide-react';
 import type { Route } from '../types';
+import { fetchWeather } from '../api';
 import RiskBadge from './RiskBadge';
 import SubRiskRow from './SubRiskRow';
+import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { formatFare, formatDistance, formatDuration } from '../utils';
 
 interface RouteCardProps {
@@ -11,6 +14,25 @@ interface RouteCardProps {
 }
 
 export default function RouteCard({ route, onEdit, onDelete }: RouteCardProps) {
+  const isOnline = useOnlineStatus();
+  const hasUnknownRisk = [
+    route.risk.overall,
+    route.risk.weather,
+    route.risk.traffic,
+    route.risk.flood,
+  ].includes('UNKNOWN');
+
+  const { data: liveWeather, isFetching: isRefreshingRisk } = useQuery({
+    queryKey: ['route-card-live-risk', route.id, route.startLat, route.startLon],
+    queryFn: () => fetchWeather(route.startLat, route.startLon),
+    enabled: isOnline && hasUnknownRisk,
+    staleTime: 15 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    retry: 1,
+  });
+
+  const displayRisk = liveWeather?.risk ?? route.risk;
+
   return (
     <div className="bg-white rounded-2xl p-4 shadow-card space-y-3 animate-fadeIn">
       {/* Header row */}
@@ -56,12 +78,15 @@ export default function RouteCard({ route, onEdit, onDelete }: RouteCardProps) {
 
       {/* Risk badges */}
       <div className="flex items-center gap-2 flex-wrap">
-        <RiskBadge level={route.risk.overall} size="sm" />
-        <SubRiskRow risks={{ weather: route.risk.weather, traffic: route.risk.traffic, flood: route.risk.flood }} />
+        <RiskBadge level={displayRisk.overall} size="sm" />
+        <SubRiskRow risks={{ weather: displayRisk.weather, traffic: displayRisk.traffic, flood: displayRisk.flood }} />
+        {isRefreshingRisk && (
+          <span className="text-[10px] font-semibold text-gray-400">Refreshing...</span>
+        )}
       </div>
 
-      {route.risk.basis && (
-        <p className="text-[10px] text-gray-500 leading-relaxed">{route.risk.basis}</p>
+      {displayRisk.basis && (
+        <p className="text-[10px] text-gray-500 leading-relaxed">{displayRisk.basis}</p>
       )}
 
       {/* Route stats + fare */}
