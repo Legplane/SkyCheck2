@@ -2,9 +2,11 @@ import { useState, useEffect, useRef } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { X, MapPin, School, Clock, Tag, Bookmark } from 'lucide-react';
 import { createRoute, updateRoute, previewRoute } from '../../api';
-import type { Route, NominatimResult, RoutePreview } from '../../types';
+import type { CreateRoutePayload, Route, NominatimResult, RoutePreview } from '../../types';
 import { searchAddress, shortenAddress } from '../../services/nominatimService';
+import { addOfflineRoute } from '../../services/offlineRoutes';
 import { useDebounce } from '../../hooks/useDebounce';
+import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import { formatDistance, formatDuration, formatFare, getApiErrorMessage } from '../../utils';
 import MapView from '../../components/MapView';
 
@@ -23,6 +25,7 @@ interface LocationField {
 
 export default function AddRouteSheet({ editRoute, onClose, onSaved }: AddRouteSheetProps) {
   const isEdit = !!editRoute;
+  const isOnline = useOnlineStatus();
 
   const [start, setStart] = useState<LocationField>({
     query: editRoute?.startAddress ?? '',
@@ -51,46 +54,51 @@ export default function AddRouteSheet({ editRoute, onClose, onSaved }: AddRouteS
 
   // ── Search start ──────────────────────────────────────────────────
   useEffect(() => {
-    if (!debStartQuery || debStartQuery.length < 3 || start.selected) return;
+    if (!isOnline || !debStartQuery || debStartQuery.length < 3 || start.selected) return;
     setStart(s => ({ ...s, isSearching: true }));
     searchAddress(debStartQuery)
       .then(results => setStart(s => ({ ...s, suggestions: results, isSearching: false })))
       .catch(() => setStart(s => ({ ...s, isSearching: false })));
-  }, [debStartQuery]);
+  }, [debStartQuery, isOnline, start.selected]);
 
   // ── Search dest ───────────────────────────────────────────────────
   useEffect(() => {
-    if (!debDestQuery || debDestQuery.length < 3 || dest.selected) return;
+    if (!isOnline || !debDestQuery || debDestQuery.length < 3 || dest.selected) return;
     setDest(d => ({ ...d, isSearching: true }));
     searchAddress(debDestQuery)
       .then(results => setDest(d => ({ ...d, suggestions: results, isSearching: false })))
       .catch(() => setDest(d => ({ ...d, isSearching: false })));
-  }, [debDestQuery]);
+  }, [debDestQuery, isOnline, dest.selected]);
 
   // ── Preview route when both selected ─────────────────────────────
   useEffect(() => {
     if (!start.selected || !dest.selected) { setPreview(null); return; }
+    if (!isOnline) return;
     setIsLoadingPreview(true);
     previewRoute({ startLat: start.selected.lat, startLon: start.selected.lon, destLat: dest.selected.lat, destLon: dest.selected.lon })
       .then(setPreview)
       .catch(() => setPreview(null))
       .finally(() => setIsLoadingPreview(false));
-  }, [start.selected, dest.selected]);
+  }, [start.selected, dest.selected, isOnline]);
+
+  function buildPayload(): CreateRoutePayload {
+    if (!start.selected || !dest.selected) throw new Error('Please select start and destination.');
+    return {
+      label: label.trim() || undefined,
+      startAddress: shortenAddress(start.selected.displayName),
+      startLat: start.selected.lat,
+      startLon: start.selected.lon,
+      destAddress: shortenAddress(dest.selected.displayName),
+      destLat: dest.selected.lat,
+      destLon: dest.selected.lon,
+      departTime,
+    };
+  }
 
   // ── Save route ────────────────────────────────────────────────────
   const { mutate: doSave, isPending } = useMutation({
     mutationFn: () => {
-      if (!start.selected || !dest.selected) throw new Error('Please select start and destination.');
-      const payload = {
-        label: label.trim() || undefined,
-        startAddress: shortenAddress(start.selected.displayName),
-        startLat: start.selected.lat,
-        startLon: start.selected.lon,
-        destAddress: shortenAddress(dest.selected.displayName),
-        destLat: dest.selected.lat,
-        destLon: dest.selected.lon,
-        departTime,
-      };
+      const payload = buildPayload();
       return isEdit ? updateRoute(editRoute!.id, payload) : createRoute(payload);
     },
     onSuccess: onSaved,
@@ -103,6 +111,25 @@ export default function AddRouteSheet({ editRoute, onClose, onSaved }: AddRouteS
 
   function selectDest(r: NominatimResult) {
     setDest({ query: shortenAddress(r.displayName), selected: r, suggestions: [], isSearching: false });
+  }
+
+  function handleSave() {
+    setApiError('');
+    try {
+      const payload = buildPayload();
+      if (!isOnline) {
+        if (isEdit) {
+          setApiError('Editing saved routes needs internet. You can add a new offline route instead.');
+          return;
+        }
+        addOfflineRoute(payload, preview ?? undefined);
+        onSaved();
+        return;
+      }
+      doSave();
+    } catch (err) {
+      setApiError(err instanceof Error ? err.message : 'Please complete the route first.');
+    }
   }
 
   return (
@@ -131,6 +158,12 @@ export default function AddRouteSheet({ editRoute, onClose, onSaved }: AddRouteS
           {/* API Error */}
           {apiError && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm">⚠ {apiError}</div>
+          )}
+
+          {!isOnline && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-700 text-sm">
+              Offline mode: selected routes can be saved now and synced when internet returns.
+            </div>
           )}
 
           {/* Map Preview */}
@@ -270,7 +303,7 @@ export default function AddRouteSheet({ editRoute, onClose, onSaved }: AddRouteS
 
           {/* Save CTA */}
           <button
-            onClick={() => doSave()}
+            onClick={handleSave}
             disabled={isPending || !start.selected || !dest.selected}
             className="w-full py-3.5 bg-primary-600 text-white font-semibold rounded-xl hover:bg-primary-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 mt-2"
           >
