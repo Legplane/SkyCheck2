@@ -25,6 +25,23 @@ interface GeoState {
 let _watchId:  number | null = null;
 let _timer:    ReturnType<typeof setTimeout> | null = null;
 let _resolved  = false;
+let _bestFix: GeolocationPosition | null = null;
+
+function _isBetterFix(pos: GeolocationPosition, current: GeolocationPosition | null): boolean {
+  if (!current) return true;
+  return pos.coords.accuracy < current.coords.accuracy;
+}
+
+function _applyFix(pos: GeolocationPosition, set: (state: Partial<GeoState>) => void) {
+  const { latitude, longitude, accuracy } = pos.coords;
+  set({
+    status:   'granted',
+    lat:      latitude,
+    lon:      longitude,
+    accuracy: Math.round(accuracy),
+    reason:   '',
+  });
+}
 
 function _stopGPS() {
   if (_watchId !== null) {
@@ -55,6 +72,7 @@ export const useGeoStore = create<GeoState>((set, get) => ({
     }
 
     _resolved = false;
+    _bestFix = null;
     _stopGPS();
     set({ status: 'requesting', reason: '' });
 
@@ -63,23 +81,23 @@ export const useGeoStore = create<GeoState>((set, get) => ({
       if (!_resolved) {
         _resolved = true;
         _stopGPS();
-        set({ status: 'denied', reason: 'Location timed out', lat: OLONGAPO.lat, lon: OLONGAPO.lon });
+        if (_bestFix) {
+          _applyFix(_bestFix, set);
+        } else {
+          set({ status: 'denied', reason: 'Location timed out', lat: OLONGAPO.lat, lon: OLONGAPO.lon, accuracy: 0 });
+        }
       }
     }, 20000);
 
     const onSuccess = (pos: GeolocationPosition) => {
       if (_resolved) return;
-      const { latitude, longitude, accuracy } = pos.coords;
-      // Accept first fix quickly to avoid long spinner loops.
-      _resolved = true;
-      _stopGPS();
-      set({
-        status:   'granted',
-        lat:      latitude,
-        lon:      longitude,
-        accuracy: Math.round(accuracy),
-        reason:   '',
-      });
+      if (_isBetterFix(pos, _bestFix)) _bestFix = pos;
+
+      if (pos.coords.accuracy <= 120) {
+        _resolved = true;
+        _stopGPS();
+        _applyFix(pos, set);
+      }
     };
 
     const onError = (err: GeolocationPositionError) => {
@@ -90,27 +108,32 @@ export const useGeoStore = create<GeoState>((set, get) => ({
         err.code === 1 ? 'Location permission denied'
         : err.code === 2 ? 'Location unavailable'
         : 'Location timed out';
-      set({ status: 'denied', reason, lat: OLONGAPO.lat, lon: OLONGAPO.lon });
+      if (_bestFix) {
+        _applyFix(_bestFix, set);
+      } else {
+        set({ status: 'denied', reason, lat: OLONGAPO.lat, lon: OLONGAPO.lon, accuracy: 0 });
+      }
     };
 
     // Phase 1: fast low-accuracy attempt (~1–2 s)
     navigator.geolocation.getCurrentPosition(
       onSuccess,
       () => { /* silent fail — watchPosition continues */ },
-      { enableHighAccuracy: false, maximumAge: 0, timeout: 5000 }
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 8000 }
     );
 
     // Phase 2: high-accuracy continuous watch
     _watchId = navigator.geolocation.watchPosition(
       onSuccess, onError,
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 }
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
     );
   },
 
   skipToFallback: () => {
     _resolved = true;
+    _bestFix = null;
     _stopGPS();
-    set({ status: 'denied', reason: 'Skipped', lat: OLONGAPO.lat, lon: OLONGAPO.lon });
+    set({ status: 'denied', reason: 'Skipped', lat: OLONGAPO.lat, lon: OLONGAPO.lon, accuracy: 0 });
   },
 
   refreshLocation: () => new Promise<boolean>((resolve) => {

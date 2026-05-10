@@ -31,6 +31,7 @@ export default function DashboardPage() {
   const status    = useGeoStore((s) => s.status);
   const lat       = useGeoStore((s) => s.lat);
   const lon       = useGeoStore((s) => s.lon);
+  const accuracy  = useGeoStore((s) => s.accuracy);
   const isLive    = useGeoStore(selectIsLive);
   const isReady   = useGeoStore(selectIsReady);
   const reason    = useGeoStore((s) => s.reason);
@@ -173,7 +174,7 @@ export default function DashboardPage() {
             <span className="text-sm font-medium text-gray-700 truncate">{location}, PH</span>
             {isLive ? (
               <span className="shrink-0 text-xs text-green-600 bg-green-50 px-1.5 py-0.5 rounded-full font-medium flex items-center gap-0.5">
-                <Navigation size={9} /> Live
+                <Navigation size={9} /> Live{accuracy ? ` +/-${accuracy}m` : ''}
               </span>
             ) : (
               <span className="shrink-0 text-xs text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full font-medium">

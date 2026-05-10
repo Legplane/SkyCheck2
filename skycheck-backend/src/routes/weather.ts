@@ -74,7 +74,7 @@ function pickDisplayLocation(input: {
 
 async function resolvePhLocation(lat: number, lon: number): Promise<string> {
   try {
-    const zoom = '12'; // city / municipality level (PH)
+    const zoom = '16'; // barangay / suburb level when available
     const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=${zoom}&addressdetails=1`;
     const res  = await fetch(url, {
       headers: { 'User-Agent': 'SkyCheck-StudentApp/1.0 (gordoncollege.edu.ph)' },
@@ -88,6 +88,10 @@ async function resolvePhLocation(lat: number, lon: number): Promise<string> {
         city?:           string;
         municipality?: string;
         city_district?: string;
+        neighbourhood?: string;
+        neighborhood?: string;
+        quarter?:       string;
+        residential?:   string;
         county?:       string;
         state?:        string;
         town?:         string;
@@ -99,15 +103,20 @@ async function resolvePhLocation(lat: number, lon: number): Promise<string> {
     const a = data.address;
     if (!a) return 'Your Area';
 
-    // Pick the most readable PH locality (prefer city-level names)
+    // Pick the most specific readable PH locality first. This lets places
+    // like Old Cabalan show instead of only the wider Olongapo label.
     const name =
-      a.city           ||
-      a.municipality   ||
-      a.town           ||
-      a.city_district  ||
-      a.county         ||
-      a.village        ||
       a.suburb         ||
+      a.village        ||
+      a.neighbourhood  ||
+      a.neighborhood   ||
+      a.quarter        ||
+      a.residential    ||
+      a.city_district  ||
+      a.town           ||
+      a.municipality   ||
+      a.city           ||
+      a.county         ||
       a.state          ||
       'Your Area';
 
