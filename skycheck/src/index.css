@@ -1,0 +1,85 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Base ──────────────────────────────────────────────────────── */
+@layer base {
+  * {
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  html, body {
+    height: 100%;
+    overflow: hidden;
+  }
+
+  #root {
+    height: 100%;
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Prevent text size adjust on orientation change */
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+}
+
+/* ── Utilities ─────────────────────────────────────────────────── */
+@layer utilities {
+  /* Hide scrollbar but keep functionality */
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  /* iOS safe area padding */
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+
+  /* Shimmer animation for skeleton loaders */
+  .animate-shimmer {
+    background: linear-gradient(
+      90deg,
+      #f0f0f0 25%,
+      #e0e0e0 50%,
+      #f0f0f0 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+}
+
+/* ── Leaflet map z-index fix ───────────────────────────────────── */
+.leaflet-container {
+  z-index: 1;
+  font-family: inherit;
+}
+
+/* Ensure map pane is below our modals/sheets */
+.leaflet-top,
+.leaflet-bottom {
+  z-index: 2;
+}
+
+/* ── PWA standalone safe areas ─────────────────────────────────── */
+@media (display-mode: standalone) {
+  header:first-of-type {
+    padding-top: max(3rem, env(safe-area-inset-top));
+  }
+
+  nav.fixed.bottom-0 {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}

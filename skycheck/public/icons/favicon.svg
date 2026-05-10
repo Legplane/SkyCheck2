@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- Sky gradient background -->
+  <defs>
+    <linearGradient id="skyGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%"   style="stop-color:#1A56C4;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0D2F6E;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#skyGrad)"/>
+  <!-- Cloud shape -->
+  <path d="M380 288a96 96 0 0 0-72-93A128 128 0 0 0 96 240a96 96 0 0 0 0 192h288a96 96 0 0 0 0-192z"
+        fill="white" fill-opacity="0.95"/>
+</svg>

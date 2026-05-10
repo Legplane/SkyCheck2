@@ -1,0 +1,166 @@
+// ─────────────────────────────────────────────────────────────────
+// SkyCheck Prisma Schema V2
+// Run: npx prisma migrate dev --name v2_init
+// ─────────────────────────────────────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── User ──────────────────────────────────────────────────────────
+model User {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passHash     String?   // null for Google-only
+  googleId     String?   @unique // Google `sub`
+  isVerified   Boolean   @default(false)
+  verifyTok    String?   @unique
+  verifyExp    DateTime?
+  resetTok     String?   @unique
+  resetExp     DateTime?
+  lockedUntil  DateTime?
+  failedLogins Int       @default(0)
+
+  // Notification preferences
+  morningAlerts Boolean @default(true)
+  alertSound    Boolean @default(false)
+  vibration     Boolean @default(true)
+
+  routes        Route[]
+  alerts        Alert[]
+  healthChecks  HealthCheck[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+// ── Route ─────────────────────────────────────────────────────────
+model Route {
+  id           String  @id @default(cuid())
+  userId       String
+  user         User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  label        String?
+  startAddress String
+  startLat     Float
+  startLon     Float
+  destAddress  String
+  destLat      Float
+  destLon      Float
+  departTime   String  // "HH:MM" format
+  distanceKm   Float   @default(0)
+  durationMin  Float   @default(0)
+
+  // Cached risk (refreshed by cron every 15 min)
+  lastWeatherRisk String @default("UNKNOWN")
+  lastTrafficRisk String @default("UNKNOWN")
+  lastFloodRisk   String @default("UNKNOWN")
+  lastOverallRisk String @default("UNKNOWN")
+  lastRiskBasis   String @default("")
+  lastRiskAt      DateTime?
+
+  alerts  Alert[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("routes")
+}
+
+// ── Alert ─────────────────────────────────────────────────────────
+model Alert {
+  id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  routeId   String?
+  route     Route?    @relation(fields: [routeId], references: [id], onDelete: SetNull)
+
+  type      AlertType
+  riskLevel String    // HIGH | MEDIUM | LOW
+  title     String
+  body      String
+  isRead    Boolean   @default(false)
+
+  createdAt DateTime  @default(now())
+
+  @@map("alerts")
+}
+
+enum AlertType {
+  WEATHER
+  TRAFFIC
+  FLOOD
+}
+
+// ── HealthCheck — daily user health assessment ────────────────────
+model HealthCheck {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Symptoms (boolean flags)
+  hasFever          Boolean @default(false)
+  feverTemp         Float?           // °C if measured
+  hasCough          Boolean @default(false)
+  hasSoreThroat     Boolean @default(false)
+  hasFatigue        Boolean @default(false)
+  hasDifficulty     Boolean @default(false)  // difficulty breathing
+  hasHeadache       Boolean @default(false)
+  hasBodyPain       Boolean @default(false)
+  hasVomiting       Boolean @default(false)
+
+  // Chronic / vulnerability flags
+  hasChronicCondition Boolean @default(false)  // asthma, diabetes, heart, etc.
+  chronicDetail       String?
+
+  // Overall self-assessment
+  overallFeeling  String   @default("well")  // well | mild | sick | severe
+  additionalNotes String?
+
+  // Date of check (one per user per day)
+  checkDate   DateTime @default(now()) @db.Date
+  createdAt   DateTime @default(now())
+
+  @@unique([userId, checkDate])
+  @@map("health_checks")
+}
+
+// ── SchoolAnnouncement — F2F / Online / Suspended ─────────────────
+model SchoolAnnouncement {
+  id          String   @id @default(cuid())
+  schoolName  String   @default("Gordon College")
+  status      String   // F2F | ONLINE | SUSPENDED | HYBRID
+  title       String
+  body        String?
+  effectiveAt DateTime
+  expiresAt   DateTime?
+  postedBy    String?  // admin name
+  sourceUrl   String?
+  createdAt   DateTime @default(now())
+
+  @@map("school_announcements")
+}
+
+// ── GovAnnouncement — PAGASA / NDRRMC / LGU advisories ───────────
+model GovAnnouncement {
+  id          String   @id @default(cuid())
+  source      String   // PAGASA | NDRRMC | LGU_OLONGAPO | LGU_SUBIC | CHED | DEPED
+  title       String
+  body        String
+  severity    String   @default("INFO")  // INFO | ADVISORY | WARNING | CRITICAL
+  effectiveAt DateTime
+  expiresAt   DateTime?
+  sourceUrl   String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  @@map("gov_announcements")
+}

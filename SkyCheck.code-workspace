@@ -1,0 +1,104 @@
+{
+  "folders": [
+    {
+      "name": "🌤 SkyCheck Frontend",
+      "path": "./skycheck"
+    },
+    {
+      "name": "⚙️ SkyCheck Backend",
+      "path": "./skycheck-backend"
+    }
+  ],
+  "settings": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "esbenp.prettier-vscode",
+    "editor.tabSize": 2,
+    "typescript.tsdk": "skycheck/node_modules/typescript/lib",
+    "tailwindCSS.includeLanguages": {
+      "typescript": "html",
+      "typescriptreact": "html"
+    },
+    "css.validate": false,
+    "editor.quickSuggestions": {
+      "strings": true
+    },
+    "files.exclude": {
+      "**/node_modules": true,
+      "**/dist": true,
+      "**/.prisma": false
+    },
+    "search.exclude": {
+      "**/node_modules": true,
+      "**/dist": true
+    },
+    "[typescriptreact]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode"
+    },
+    "[typescript]": {
+      "editor.defaultFormatter": "esbenp.prettier-vscode"
+    }
+  },
+  "extensions": {
+    "recommendations": [
+      "esbenp.prettier-vscode",
+      "bradlc.vscode-tailwindcss",
+      "prisma.prisma",
+      "dbaeumer.vscode-eslint",
+      "ms-vscode.vscode-typescript-next",
+      "formulahendry.auto-rename-tag",
+      "christian-kohler.path-intellisense"
+    ]
+  },
+  "launch": {
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "name": "Backend: ts-node-dev",
+        "type": "node",
+        "request": "launch",
+        "runtimeExecutable": "${workspaceFolder:⚙️ SkyCheck Backend}/node_modules/.bin/ts-node-dev",
+        "args": ["--respawn", "--transpile-only", "src/index.ts"],
+        "cwd": "${workspaceFolder:⚙️ SkyCheck Backend}",
+        "console": "integratedTerminal",
+        "env": { "NODE_ENV": "development" }
+      }
+    ]
+  },
+  "tasks": {
+    "version": "2.0.0",
+    "tasks": [
+      {
+        "label": "Start Frontend (Vite)",
+        "type": "shell",
+        "command": "npm run dev",
+        "options": { "cwd": "${workspaceFolder:🌤 SkyCheck Frontend}" },
+        "group": "build",
+        "presentation": { "panel": "new", "reveal": "always" }
+      },
+      {
+        "label": "Start Backend (ts-node-dev)",
+        "type": "shell",
+        "command": "npm run dev",
+        "options": { "cwd": "${workspaceFolder:⚙️ SkyCheck Backend}" },
+        "group": "build",
+        "presentation": { "panel": "new", "reveal": "always" }
+      },
+      {
+        "label": "DB: Prisma Migrate",
+        "type": "shell",
+        "command": "npm run db:migrate",
+        "options": { "cwd": "${workspaceFolder:⚙️ SkyCheck Backend}" },
+        "group": "build",
+        "presentation": { "panel": "new" }
+      },
+      {
+        "label": "DB: Prisma Studio",
+        "type": "shell",
+        "command": "npm run db:studio",
+        "options": { "cwd": "${workspaceFolder:⚙️ SkyCheck Backend}" },
+        "group": "build",
+        "presentation": { "panel": "new" }
+      }
+    ]
+  }
+}

@@ -1,0 +1,54 @@
+# ── Node ─────────────────────────────────────────────────────────
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+
+# ── Build output ──────────────────────────────────────────────────
+dist/
+build/
+.cache/
+*.tsbuildinfo   
+
+# ── Environment files (NEVER commit these) ───────────────────────
+.env
+.env.local
+.env.*.local
+skycheck/.env
+skycheck-backend/.env
+skycheck-backend/.env.local
+skycheck-backend/dist
+skycheck-backend/node_modules
+skycheck/dist
+
+
+
+
+# ── Prisma generated ─────────────────────────────────────────────
+skycheck-backend/node_modules/.prisma/
+
+# ── PWA generated icons (regenerate with script) ─────────────────
+skycheck/public/icons/pwa-192.png
+skycheck/public/icons/pwa-512.png
+
+# ── VS Code (keep workspace, ignore per-user settings) ───────────
+.vscode/settings.json
+.vscode/launch.json
+!SkyCheck.code-workspace
+
+# ── OS files ─────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+
+# ── Logs ─────────────────────────────────────────────────────────
+logs/
+*.log
+
+# ── Misc ─────────────────────────────────────────────────────────
+*.local
+.eslintcache
