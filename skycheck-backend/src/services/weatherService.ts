@@ -308,6 +308,90 @@ function mergeAccuWeatherCurrentOnly(base: CurrentWeather, aw: AWCurrent): Curre
   };
 }
 
+function buildAccuWeatherOnlyForecast(
+  awCurrent: AWCurrent,
+  awHourly: AWHourly[],
+): { current: CurrentWeather; hourly: HourlyForecast[] } {
+  const nowUnix = Math.floor(Date.now() / 1000);
+  const wmo = accuWeatherIconToWmo(awCurrent.WeatherIcon);
+  const nextHr = awHourly.find(h => h.EpochDateTime >= nowUnix);
+  const nextHrRainProb = nextHr ? accuWeatherRainProbability(nextHr) : undefined;
+  const nextHrLiquid = nextHr
+    ? Math.max(
+      safeNumber(nextHr.TotalLiquid?.Value, 0),
+      safeNumber(nextHr.Rain?.Value, 0),
+    )
+    : 0;
+  const precipMm = Math.max(
+    awCurrent.PrecipitationSummary?.Precipitation?.Metric?.Value ?? 0,
+    nextHrLiquid,
+  );
+
+  const current: CurrentWeather = {
+    temperature:              roundOne(awCurrent.Temperature.Metric.Value),
+    feelsLike:                calibratedFeelsLike(
+      awCurrent.Temperature.Metric.Value,
+      awCurrent.RealFeelTemperature.Metric.Value,
+      awCurrent.RelativeHumidity,
+    ),
+    humidity:                 clampPercent(awCurrent.RelativeHumidity),
+    precipitationProbability: clampPercent(nextHrRainProb ?? (awCurrent.HasPrecipitation ? 75 : 0)),
+    precipitation:            roundOne(precipMm),
+    windSpeed:                Math.round(awCurrent.Wind.Speed.Metric.Value),
+    weatherCode:              wmo,
+    weatherLabel:             awCurrent.WeatherText?.trim() || getWeatherLabel(wmo),
+    weatherIcon:              getWeatherIcon(wmo),
+    updatedAt:                new Date(awCurrent.EpochTime * 1000).toISOString(),
+    windGust:                 undefined,
+  };
+
+  const hourly: HourlyForecast[] = [];
+  for (const h of awHourly) {
+    if (h.EpochDateTime < nowUnix) continue;
+    const code = accuWeatherIconToWmo(h.WeatherIcon);
+    hourly.push({
+      time: new Date(h.EpochDateTime * 1000).toLocaleTimeString('en-PH', {
+        hour:   '2-digit',
+        minute: '2-digit',
+        hour12: true,
+        timeZone: 'Asia/Manila',
+      }),
+      temperature: roundOne(h.Temperature.Value),
+      weatherCode: code,
+      weatherIcon: getWeatherIcon(code),
+      precipitationProbability: accuWeatherRainProbability(h) ?? (isRainCode(code) ? 65 : 0),
+    });
+    if (hourly.length >= 6) break;
+  }
+
+  return { current, hourly };
+}
+
+async function fetchAccuWeatherForecast(lat: number, lon: number, apiKey: string): Promise<{
+  current: CurrentWeather;
+  hourly: HourlyForecast[];
+  providerPlaceName?: string;
+} | null> {
+  const awGeo = await accuWeatherGeoposition(lat, lon, apiKey);
+  if (!awGeo?.locationKey) return null;
+
+  const [awCur, awHr] = await Promise.all([
+    accuWeatherCurrent(awGeo.locationKey, apiKey),
+    accuWeatherHourly24(awGeo.locationKey, apiKey),
+  ]);
+  if (!awCur) return null;
+
+  const built = buildAccuWeatherOnlyForecast(awCur, awHr);
+  const placeSanitized = awGeo.placeName
+    ? awGeo.placeName.replace(/^City of /i, '').replace(/^Municipality of /i, '').trim()
+    : '';
+
+  return {
+    ...built,
+    ...(placeSanitized ? { providerPlaceName: placeSanitized } : {}),
+  };
+}
+
 async function fetchOpenMeteoForecast(lat: number, lon: number): Promise<{
   current: CurrentWeather;
   hourly: HourlyForecast[];
@@ -460,7 +544,35 @@ export async function fetchWeatherData(lat: number, lon: number): Promise<{
   }
 
   const awKey = process.env.ACCUWEATHER_API_KEY?.trim();
-  const om = await fetchOpenMeteoForecast(lat, lon);
+  let om: Awaited<ReturnType<typeof fetchOpenMeteoForecast>> | null = null;
+  let openMeteoError: unknown;
+
+  try {
+    om = await fetchOpenMeteoForecast(lat, lon);
+  } catch (err) {
+    openMeteoError = err;
+    const status = axios.isAxiosError(err) ? err.response?.status : null;
+    const code = axios.isAxiosError(err) ? err.code : null;
+    if (status === 429) console.warn('[Weather] Open-Meteo daily/rate limit reached - trying AccuWeather fallback');
+    else if (code === 'ECONNABORTED') console.warn('[Weather] Open-Meteo timed out - trying AccuWeather fallback');
+    else console.warn('[Weather] Open-Meteo unavailable - trying AccuWeather fallback');
+  }
+
+  if (!om && awKey) {
+    const awOnly = await fetchAccuWeatherForecast(lat, lon, awKey);
+    if (awOnly) {
+      const payload: WeatherCachePayload = {
+        current: awOnly.current,
+        hourly: awOnly.hourly,
+        weatherRisk: evaluateWeatherRisk(awOnly.current),
+        ...(awOnly.providerPlaceName ? { providerPlaceName: awOnly.providerPlaceName } : {}),
+      };
+      setCachedWeather(lat, lon, payload);
+      return payload;
+    }
+  }
+
+  if (!om) throw openMeteoError;
 
   if (!awKey) {
     const payload: WeatherCachePayload = {
