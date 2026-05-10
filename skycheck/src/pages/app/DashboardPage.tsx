@@ -174,6 +174,9 @@ export default function DashboardPage() {
   }
 
   const { current, hourly, risk, commuteTips, location } = data;
+  const displayLocation = status === 'denied' || status === 'unavailable'
+    ? FALLBACK_LOCATION.displayName
+    : location;
 
   const updatedLabel = formatUpdatedAt(
     lastManualRefreshAt
@@ -193,7 +196,9 @@ export default function DashboardPage() {
           <div className="min-w-0 flex-1 mr-2">
             <div className="flex items-start gap-1.5 min-w-0">
               <MapPin size={13} className={`shrink-0 mt-0.5 ${!hasTrustedLiveLocation ? 'text-amber-500' : 'text-primary-600'}`} />
-              <span className="text-sm font-medium text-gray-700 leading-snug break-words min-w-0">{location}, PH</span>
+              <span className="text-sm font-medium text-gray-700 leading-snug break-words min-w-0">
+                {displayLocation}, PH
+              </span>
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-1.5">
               {hasTrustedLiveLocation ? (
@@ -325,7 +330,7 @@ function LocationBanner({ reason, onRetry }: { reason: string; onRetry: () => vo
     <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 flex items-start gap-2">
       <AlertTriangle size={14} className="text-amber-600 shrink-0" />
       <span className="text-xs text-amber-800 flex-1 min-w-0 leading-snug break-words">
-        {reason || 'Precise location unavailable'} Showing {FALLBACK_LOCATION.label} weather instead. For accurate tracking, use the mobile version.
+        {reason || 'Precise location unavailable'} Showing {FALLBACK_LOCATION.displayName} weather instead. For accurate tracking, use the mobile version.
       </span>
       <button
         type="button"

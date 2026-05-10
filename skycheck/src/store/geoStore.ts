@@ -5,7 +5,12 @@ import { create } from 'zustand';
 // GPS starts once in AppShell and never restarts on route change.
 // ─────────────────────────────────────────────────────────────────
 
-export const FALLBACK_LOCATION = { lat: 14.8799, lon: 120.2343, label: 'Subic' };
+export const FALLBACK_LOCATION = {
+  lat: 14.8799,
+  lon: 120.2343,
+  label: 'Subic',
+  displayName: 'Subic, Zambales, Central Luzon',
+};
 
 export type GeoStatus = 'idle' | 'requesting' | 'granted' | 'denied' | 'unavailable';
 
