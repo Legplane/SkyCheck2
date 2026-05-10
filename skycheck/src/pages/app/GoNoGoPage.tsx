@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ChevronLeft, RefreshCw, CheckCircle2, AlertTriangle,
   XCircle, Shield, Thermometer, Car, CloudRain,
@@ -7,7 +7,8 @@ import {
 } from 'lucide-react';
 import { evaluateGoNoGo, getTodayHealthCheck } from '../../api';
 import { useGeoStore } from '../../store/geoStore';
-import type { GoNoGoVerdict, GoNoGoFactor } from '../../types';
+import { useOnlineStatus } from '../../hooks/useOnlineStatus';
+import type { GoNoGoVerdict, GoNoGoFactor, GoNoGoResult, HealthCheck, WeatherSnapshot } from '../../types';
 import { healthCheckSignature } from '../../utils/healthSignature';
 import { clsx } from '../../utils';
 
@@ -45,33 +46,44 @@ const STATUS_DOT: Record<GoNoGoFactor['status'], string> = {
 
 export default function GoNoGoPage() {
   const navigate = useNavigate();
+  const qc = useQueryClient();
+  const isOnline = useOnlineStatus();
   // Use global GPS store — no per-page GPS restart
   const lat      = useGeoStore((s) => s.lat);
   const lon      = useGeoStore((s) => s.lon);
+  const cachedWeather = qc.getQueriesData<WeatherSnapshot>({ queryKey: ['weather'] })
+    .find(([, cached]) => Boolean(cached))?.[1];
 
   const { data: todayHealth, isLoading: healthLoading } = useQuery({
     queryKey: ['health-today'],
     queryFn:  getTodayHealthCheck,
+    initialData: !isOnline ? qc.getQueryData<HealthCheck>(['health-today']) : undefined,
     staleTime: 5 * 60 * 1000,
+    enabled: isOnline,
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   });
 
   const healthKey = todayHealth ? healthCheckSignature(todayHealth) : 'none';
 
-  const { data: result, isLoading, isFetching, refetch, error } = useQuery({
+  const { data: liveResult, isLoading, isFetching, refetch, error } = useQuery({
     // Include health answers so updating the check invalidates cache and refetches evaluation.
     queryKey: ['go-no-go', lat, lon, healthKey],
     queryFn:  () => evaluateGoNoGo({ lat, lon }),
     staleTime: 5 * 60 * 1000,
     gcTime:    0,
     retry: 1,
-    enabled: !!todayHealth,
+    enabled: isOnline && !!todayHealth,
     refetchOnMount: false,
     refetchOnWindowFocus: false,
     refetchOnReconnect: true,
-    refetchInterval: 5 * 60 * 1000,
+    refetchInterval: isOnline ? 5 * 60 * 1000 : false,
   });
+
+  const offlineResult = !isOnline && todayHealth && cachedWeather
+    ? buildOfflineGoNoGo(todayHealth, cachedWeather)
+    : null;
+  const resultToShow = liveResult ?? offlineResult;
 
   // ── No health check yet ───────────────────────────────────────
   if (!healthLoading && !todayHealth) {
@@ -100,7 +112,7 @@ export default function GoNoGoPage() {
   }
 
   // ── Loading ───────────────────────────────────────────────────
-  if (isLoading || healthLoading) {
+  if ((isLoading && isOnline) || healthLoading) {
     return (
       <div className="flex flex-col min-h-screen w-full max-w-6xl mx-auto bg-gray-50">
         <PageHeader onBack={() => navigate(-1)} onRefresh={refetch} isFetching={true} />
@@ -114,22 +126,29 @@ export default function GoNoGoPage() {
   }
 
   // ── Error ─────────────────────────────────────────────────────
-  if (error || !result) {
+  if ((error && isOnline) || !resultToShow) {
     return (
       <div className="flex flex-col min-h-screen w-full max-w-6xl mx-auto bg-gray-50">
         <PageHeader onBack={() => navigate(-1)} onRefresh={refetch} isFetching={false} />
         <div className="flex flex-col items-center justify-center flex-1 gap-4 px-8 text-center">
           <span className="text-5xl">⚠️</span>
-          <p className="text-gray-600 text-sm">Could not complete evaluation. Check your connection.</p>
-          <button onClick={() => refetch()}
-            className="px-5 py-2.5 bg-primary-600 text-white rounded-xl text-sm font-semibold">
-            Retry
-          </button>
+          <p className="text-gray-600 text-sm">
+            {!isOnline
+              ? 'No cached weather was found yet. Open the Dashboard once while online, then Go/No-Go can work offline.'
+              : 'Could not complete evaluation. Check your connection.'}
+          </p>
+          {isOnline && (
+            <button onClick={() => refetch()}
+              className="px-5 py-2.5 bg-primary-600 text-white rounded-xl text-sm font-semibold">
+              Retry
+            </button>
+          )}
         </div>
       </div>
     );
   }
 
+  const result = resultToShow as GoNoGoResult;
   const vc = VERDICT_CONFIG[result.verdict];
   const VerdictIcon = vc.icon;
 
@@ -140,6 +159,12 @@ export default function GoNoGoPage() {
       <div className="flex-1 overflow-y-auto">
         {/* Main Verdict Card */}
         <div className={`mx-4 mt-4 rounded-3xl p-6 border-2 ${vc.border} bg-white shadow-card-lg`}>
+          {!isOnline && (
+            <div className="flex items-center gap-2 mb-4 p-2.5 bg-amber-50 border border-amber-100 rounded-xl">
+              <Shield size={14} className="text-amber-600 shrink-0" />
+              <span className="text-xs text-amber-700 font-medium">Offline estimate based on last cached conditions</span>
+            </div>
+          )}
           {result.schoolTitle && (
             <div className="flex items-center gap-2 mb-4 p-2.5 bg-blue-50 border border-blue-100 rounded-xl">
               <Building2 size={14} className="text-blue-600 shrink-0" />
@@ -298,4 +323,134 @@ function PageHeader({ onBack, onRefresh, isFetching }: {
       </button>
     </header>
   );
+}
+
+function buildOfflineGoNoGo(health: HealthCheck, weatherSnapshot: WeatherSnapshot): GoNoGoResult {
+  const factors: GoNoGoFactor[] = [];
+  let score = 100;
+  let verdict: GoNoGoVerdict = 'GO';
+  let primaryReason = 'All cached conditions are within safe range';
+  const risk = weatherSnapshot.risk;
+  const current = weatherSnapshot.current;
+
+  const severeHealth = health.overallFeeling === 'severe' || health.hasDifficulty || (health.hasFever && (health.feverTemp ?? 38) >= 39);
+  const sickHealth = health.overallFeeling === 'sick' || (health.hasFever && (health.feverTemp ?? 38) >= 38);
+  const mildHealth = health.overallFeeling === 'mild' || health.hasCough || health.hasSoreThroat
+    || health.hasFatigue || health.hasHeadache || health.hasBodyPain || health.hasVomiting;
+
+  if (severeHealth) {
+    factors.push({ category: 'HEALTH', label: 'Health Status', status: 'DANGER', detail: 'Severe symptoms reported - do not commute' });
+    score -= 100;
+    verdict = 'DO_NOT_GO';
+    primaryReason = 'Your health condition is too poor to commute safely';
+  } else if (sickHealth) {
+    factors.push({ category: 'HEALTH', label: 'Health Status', status: 'DANGER', detail: 'Feeling sick or feverish - commuting is risky' });
+    score -= 60;
+    verdict = 'OWN_RISK';
+    primaryReason = 'You are feeling unwell';
+  } else if (mildHealth) {
+    factors.push({ category: 'HEALTH', label: 'Health Status', status: 'CAUTION', detail: 'Mild symptoms reported - monitor your condition' });
+    score -= 20;
+    verdict = 'OWN_RISK';
+    primaryReason = 'You have mild symptoms today';
+  } else {
+    factors.push({ category: 'HEALTH', label: 'Health Status', status: 'OK', detail: 'Feeling well - no symptoms reported' });
+  }
+
+  if (health.hasChronicCondition) {
+    factors.push({ category: 'HEALTH', label: 'Chronic Condition', status: 'CAUTION', detail: 'Underlying condition - take extra care with heat and rain' });
+    score -= 10;
+    if (verdict === 'GO') {
+      verdict = 'OWN_RISK';
+      primaryReason = 'Underlying condition requires extra caution';
+    }
+  }
+
+  if (risk.weather === 'HIGH') {
+    factors.push({ category: 'WEATHER', label: 'Weather Risk', status: 'DANGER', detail: `Cached rain chance is high - ${current.precipitationProbability}%` });
+    score -= 35;
+    if (verdict === 'GO') {
+      verdict = 'OWN_RISK';
+      primaryReason = 'Elevated cached rain risk for your commute';
+    }
+  } else if (risk.weather === 'MEDIUM') {
+    factors.push({ category: 'WEATHER', label: 'Weather Risk', status: 'CAUTION', detail: `Cached rain chance is elevated - ${current.precipitationProbability}%` });
+    score -= 15;
+  } else {
+    factors.push({ category: 'WEATHER', label: 'Weather Risk', status: 'OK', detail: `Cached rain chance is low - ${current.precipitationProbability}%` });
+  }
+
+  if (risk.flood === 'HIGH') {
+    factors.push({ category: 'FLOOD', label: 'Flood Risk', status: 'DANGER', detail: 'Cached flood risk is high' });
+    score -= 35;
+    if (risk.weather === 'HIGH') {
+      verdict = 'DO_NOT_GO';
+      primaryReason = 'Cached severe weather and flood risk - do not travel';
+    } else if (verdict === 'GO') {
+      verdict = 'OWN_RISK';
+      primaryReason = 'High cached flood risk on your route';
+    }
+  } else if (risk.flood === 'MEDIUM') {
+    factors.push({ category: 'FLOOD', label: 'Flood Risk', status: 'CAUTION', detail: 'Cached flood risk is possible' });
+    score -= 15;
+  } else {
+    factors.push({ category: 'FLOOD', label: 'Flood Risk', status: risk.flood === 'UNKNOWN' ? 'CAUTION' : 'OK', detail: risk.flood === 'UNKNOWN' ? 'Flood check unavailable offline' : 'Cached flood risk is low' });
+    if (risk.flood === 'UNKNOWN') score -= 8;
+  }
+
+  if (current.feelsLike >= 42) {
+    factors.push({ category: 'HEAT', label: 'Heat Index', status: 'DANGER', detail: `Cached heat index ${current.feelsLike}C - avoid long exposure` });
+    score -= 25;
+  } else if (current.feelsLike >= 33) {
+    factors.push({ category: 'HEAT', label: 'Heat Index', status: 'CAUTION', detail: `Cached heat index ${current.feelsLike}C - stay hydrated` });
+    score -= 15;
+  } else {
+    factors.push({ category: 'HEAT', label: 'Heat Index', status: 'OK', detail: `Cached heat index ${current.feelsLike}C` });
+  }
+
+  if (risk.traffic === 'HIGH') {
+    factors.push({ category: 'TRAFFIC', label: 'Traffic', status: 'DANGER', detail: 'Cached traffic risk is high' });
+    score -= 15;
+  } else if (risk.traffic === 'MEDIUM') {
+    factors.push({ category: 'TRAFFIC', label: 'Traffic', status: 'CAUTION', detail: 'Cached traffic risk is moderate' });
+    score -= 5;
+  } else {
+    factors.push({ category: 'TRAFFIC', label: 'Traffic', status: risk.traffic === 'UNKNOWN' ? 'CAUTION' : 'OK', detail: risk.traffic === 'UNKNOWN' ? 'Traffic check unavailable offline' : 'Cached traffic risk is low' });
+    if (risk.traffic === 'UNKNOWN') score -= 5;
+  }
+
+  factors.push({ category: 'SCHOOL', label: 'Class Status', status: 'CAUTION', detail: 'School announcements are not refreshed offline' });
+  factors.push({ category: 'GOVERNMENT', label: 'Gov Advisory', status: 'CAUTION', detail: 'Government advisories are not refreshed offline' });
+  score = Math.max(0, Math.min(100, score));
+
+  const recommendation = verdict === 'DO_NOT_GO'
+    ? 'Based on cached data and your health check, staying home is safest.'
+    : verdict === 'OWN_RISK'
+      ? 'Proceed with caution. This is based on cached offline data, so verify conditions when internet returns.'
+      : 'Safe to go based on cached offline data. Recheck once internet is available.';
+
+  return {
+    verdict,
+    primaryReason,
+    factors,
+    safetyScore: score,
+    recommendation,
+    weather: {
+      temperature: current.temperature,
+      feelsLike: current.feelsLike,
+      weatherLabel: current.weatherLabel,
+      weatherIcon: current.weatherIcon,
+      rainProb: current.precipitationProbability,
+    },
+    risk,
+    schoolStatus: 'UNKNOWN',
+    schoolTitle: null,
+    govAdvisories: [],
+    healthSummary: {
+      overallFeeling: health.overallFeeling,
+      hasFever: health.hasFever,
+      hasChronicCondition: health.hasChronicCondition,
+    },
+    evaluatedAt: new Date().toISOString(),
+  };
 }

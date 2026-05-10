@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { submitHealthCheck, getTodayHealthCheck } from '../../api';
 import type { HealthCheck, HealthCheckPayload } from '../../types';
+import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import { getApiErrorMessage } from '../../utils';
 
 type Feeling = 'well' | 'mild' | 'sick' | 'severe';
@@ -63,6 +64,7 @@ export default function HealthCheckPage() {
   const navigate  = useNavigate();
   const location  = useLocation();
   const qc        = useQueryClient();
+  const isOnline  = useOnlineStatus();
 
   const [form, setForm]         = useState<HealthCheckPayload>(EMPTY_FORM);
   const [submitted, setSubmitted] = useState(false);
@@ -74,7 +76,9 @@ export default function HealthCheckPage() {
   const { data: existing, isLoading: checkLoading } = useQuery({
     queryKey: ['health-today'],
     queryFn:  getTodayHealthCheck,
+    initialData: !isOnline ? qc.getQueryData<HealthCheck>(['health-today']) : undefined,
     staleTime: 5 * 60 * 1000,
+    enabled: isOnline,
   });
 
   // Go/No-Go → "Update Health Check" passes state so we open the form even if the summary link is hard to tap.
@@ -106,6 +110,30 @@ export default function HealthCheckPage() {
 
   function toggleSymptom(key: SymptomKey) {
     setForm(f => ({ ...f, [key]: !f[key] }));
+  }
+
+  function saveOfflineHealthCheck() {
+    const now = new Date();
+    const offlineRecord: HealthCheck = {
+      ...form,
+      id: `offline-${now.toISOString()}`,
+      userId: 'offline',
+      checkDate: now.toISOString().slice(0, 10),
+      createdAt: now.toISOString(),
+    };
+    qc.setQueryData(['health-today'], offlineRecord);
+    qc.removeQueries({ queryKey: ['go-no-go'] });
+    setEditingToday(false);
+    setSubmitted(true);
+    setError('');
+  }
+
+  function handleSubmit() {
+    if (!isOnline) {
+      saveOfflineHealthCheck();
+      return;
+    }
+    submit();
   }
 
   // ── Already submitted today (until user chooses to edit) ──────
@@ -188,6 +216,12 @@ export default function HealthCheckPage() {
         {error && (
           <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm flex gap-2">
             <AlertCircle size={16} className="shrink-0 mt-0.5" /> {error}
+          </div>
+        )}
+
+        {!isOnline && (
+          <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-700 text-sm">
+            Offline mode: this health check will be used locally for today’s Go/No-Go estimate.
           </div>
         )}
 
@@ -307,7 +341,7 @@ export default function HealthCheckPage() {
 
         {/* Submit */}
         <button
-          onClick={() => submit()}
+          onClick={handleSubmit}
           disabled={isPending}
           className="w-full py-4 bg-primary-600 text-white font-bold rounded-2xl hover:bg-primary-700 transition-colors disabled:opacity-60 flex items-center justify-center gap-2 text-base"
         >
