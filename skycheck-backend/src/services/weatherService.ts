@@ -32,9 +32,19 @@ interface OpenMeteoResponse {
     relative_humidity_2m?:     number[];
     precipitation_probability: number[];
     precipitation?:            number[];
+    rain?:                     number[];
+    showers?:                  number[];
+    cloud_cover?:              number[];
     wind_speed_10m?:           number[];
     wind_gusts_10m?:           number[];
     weather_code:              number[];
+  };
+  minutely_15?: {
+    time:          number[];
+    precipitation: number[];
+    rain?:         number[];
+    showers?:      number[];
+    weather_code?: number[];
   };
 }
 
@@ -63,6 +73,74 @@ function nearestHourlyIndex(times: number[], targetUnix: number): number {
     }
   }
   return best;
+}
+
+function isRainCode(code: number): boolean {
+  return [51, 53, 55, 56, 57, 61, 63, 65, 66, 67, 80, 81, 82, 95, 96, 99].includes(code);
+}
+
+function minutelyPrecipForHour(
+  minutely: OpenMeteoResponse['minutely_15'],
+  hourUnix: number,
+): { totalMm: number; wetSlots: number; rainCode: boolean } {
+  if (!minutely?.time?.length) return { totalMm: 0, wetSlots: 0, rainCode: false };
+
+  const start = hourUnix;
+  const end = hourUnix + 60 * 60;
+  let totalMm = 0;
+  let wetSlots = 0;
+  let rainCode = false;
+
+  for (let i = 0; i < minutely.time.length; i++) {
+    const t = minutely.time[i]!;
+    if (t < start || t >= end) continue;
+
+    const precip = Math.max(
+      safeNumber(minutely.precipitation[i], 0),
+      safeNumber(minutely.rain?.[i], 0) + safeNumber(minutely.showers?.[i], 0),
+    );
+    if (precip > 0.02) wetSlots++;
+    totalMm += precip;
+
+    const code = safeNumber(minutely.weather_code?.[i], 0);
+    if (isRainCode(code)) rainCode = true;
+  }
+
+  return { totalMm: roundOne(totalMm), wetSlots, rainCode };
+}
+
+function calibratedRainProbability(args: {
+  hourlyProbability: number;
+  hourlyPrecipitation: number;
+  hourlyRain: number;
+  hourlyShowers: number;
+  hourlyWeatherCode: number;
+  cloudCover: number;
+  minutelyTotalMm: number;
+  minutelyWetSlots: number;
+  minutelyRainCode: boolean;
+  hoursFromNow: number;
+}): number {
+  const base = clampPercent(args.hourlyProbability);
+  const hourlyWetMm = Math.max(args.hourlyPrecipitation, args.hourlyRain + args.hourlyShowers);
+  const wetCode = isRainCode(args.hourlyWeatherCode) || args.minutelyRainCode;
+
+  let calibrated = base;
+
+  if (args.minutelyTotalMm >= 2) calibrated = Math.max(calibrated, 90);
+  else if (args.minutelyTotalMm >= 1) calibrated = Math.max(calibrated, 80);
+  else if (args.minutelyTotalMm >= 0.3) calibrated = Math.max(calibrated, 65);
+  else if (args.minutelyTotalMm >= 0.1 || args.minutelyWetSlots > 0) calibrated = Math.max(calibrated, 50);
+  else if (hourlyWetMm >= 1) calibrated = Math.max(calibrated, 70);
+  else if (hourlyWetMm >= 0.3 || wetCode) calibrated = Math.max(calibrated, 55);
+
+  // For the next few hours, a dry 15-minute model is a strong local signal.
+  if (args.hoursFromNow <= 3 && args.minutelyTotalMm < 0.05 && !wetCode && hourlyWetMm < 0.1) {
+    const dryCap = args.cloudCover >= 85 ? 45 : args.cloudCover >= 65 ? 35 : 25;
+    calibrated = Math.min(Math.round(base * 0.65), dryCap);
+  }
+
+  return clampPercent(calibrated);
 }
 
 /** Max of sustained and gust @ 10 m — matches how conditions feel on a bike or when walking */
@@ -171,10 +249,12 @@ async function fetchOpenMeteoForecast(lat: number, lon: number): Promise<{
   const params = new URLSearchParams({
     latitude: lat.toString(), longitude: lon.toString(),
     current: 'temperature_2m,apparent_temperature,relative_humidity_2m,precipitation_probability,precipitation,wind_speed_10m,wind_gusts_10m,weather_code',
-    hourly: 'temperature_2m,apparent_temperature,relative_humidity_2m,precipitation_probability,precipitation,wind_speed_10m,wind_gusts_10m,weather_code',
+    hourly: 'temperature_2m,apparent_temperature,relative_humidity_2m,precipitation_probability,precipitation,rain,showers,cloud_cover,wind_speed_10m,wind_gusts_10m,weather_code',
+    minutely_15: 'precipitation,rain,showers,weather_code',
     timezone: 'Asia/Manila',
     forecast_days: '1',
     forecast_hours: '12',
+    forecast_minutely_15: '24',
     wind_speed_unit: 'kmh',
     temperature_unit: 'celsius',
     precipitation_unit: 'mm',
@@ -203,7 +283,10 @@ async function fetchOpenMeteoForecast(lat: number, lon: number): Promise<{
     ? safeNumber(data.hourly.precipitation_probability[nearestIdx], 0)
     : 0;
   const nearestPrecip = nearestIdx >= 0
-    ? safeNumber(data.hourly.precipitation?.[nearestIdx], c.precipitation)
+    ? Math.max(
+      safeNumber(data.hourly.precipitation?.[nearestIdx], c.precipitation),
+      safeNumber(data.hourly.rain?.[nearestIdx], 0) + safeNumber(data.hourly.showers?.[nearestIdx], 0),
+    )
     : c.precipitation;
   const nearestHumidity = nearestIdx >= 0
     ? safeNumber(data.hourly.relative_humidity_2m?.[nearestIdx], c.relative_humidity_2m)
@@ -213,7 +296,19 @@ async function fetchOpenMeteoForecast(lat: number, lon: number): Promise<{
     : c.apparent_temperature;
   const gustRaw = c.wind_gusts_10m;
   const gust = typeof gustRaw === 'number' && Number.isFinite(gustRaw) ? Math.round(gustRaw) : undefined;
-  const rainProbability = c.precipitation_probability ?? nearestRainProb;
+  const nearestMinutely = minutelyPrecipForHour(data.minutely_15, obsUnix - (obsUnix % 3600));
+  const rainProbability = calibratedRainProbability({
+    hourlyProbability: c.precipitation_probability ?? nearestRainProb,
+    hourlyPrecipitation: safeNumber(data.hourly.precipitation?.[nearestIdx], c.precipitation),
+    hourlyRain: safeNumber(data.hourly.rain?.[nearestIdx], 0),
+    hourlyShowers: safeNumber(data.hourly.showers?.[nearestIdx], 0),
+    hourlyWeatherCode: safeNumber(data.hourly.weather_code[nearestIdx], c.weather_code),
+    cloudCover: safeNumber(data.hourly.cloud_cover?.[nearestIdx], 100),
+    minutelyTotalMm: nearestMinutely.totalMm,
+    minutelyWetSlots: nearestMinutely.wetSlots,
+    minutelyRainCode: nearestMinutely.rainCode,
+    hoursFromNow: 0,
+  });
 
   const current: CurrentWeather = {
     temperature:              roundOne(safeNumber(c.temperature_2m)),
@@ -234,6 +329,8 @@ async function fetchOpenMeteoForecast(lat: number, lon: number): Promise<{
     const hourUnix = data.hourly.time[i];
     if (hourUnix >= nowUnix - 15 * 60) {
       const code = safeNumber(data.hourly.weather_code[i], c.weather_code);
+      const minutely = minutelyPrecipForHour(data.minutely_15, hourUnix);
+      const hoursFromNow = Math.max(0, (hourUnix - nowUnix) / 3600);
       hourly.push({
         time: new Date(hourUnix * 1000).toLocaleTimeString('en-PH', {
           hour:   '2-digit',
@@ -244,7 +341,18 @@ async function fetchOpenMeteoForecast(lat: number, lon: number): Promise<{
         temperature: roundOne(safeNumber(data.hourly.temperature_2m[i], c.temperature_2m)),
         weatherCode: code,
         weatherIcon: getWeatherIcon(code),
-        precipitationProbability: clampPercent(data.hourly.precipitation_probability[i]),
+        precipitationProbability: calibratedRainProbability({
+          hourlyProbability: safeNumber(data.hourly.precipitation_probability[i], 0),
+          hourlyPrecipitation: safeNumber(data.hourly.precipitation?.[i], 0),
+          hourlyRain: safeNumber(data.hourly.rain?.[i], 0),
+          hourlyShowers: safeNumber(data.hourly.showers?.[i], 0),
+          hourlyWeatherCode: code,
+          cloudCover: safeNumber(data.hourly.cloud_cover?.[i], 100),
+          minutelyTotalMm: minutely.totalMm,
+          minutelyWetSlots: minutely.wetSlots,
+          minutelyRainCode: minutely.rainCode,
+          hoursFromNow,
+        }),
       });
     }
   }
