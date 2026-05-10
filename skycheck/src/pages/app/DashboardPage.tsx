@@ -14,6 +14,8 @@ import { DashboardSkeleton } from '../../components/SkeletonLoader';
 import { RISK_BG_LIGHT, RISK_TEXT_COLORS } from '../../constants/risk';
 import { formatUpdatedAt } from '../../utils';
 
+const TRUSTED_GPS_ACCURACY_M = 500;
+
 function haversineM(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6_371_000;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -43,6 +45,8 @@ export default function DashboardPage() {
   /** ISO — set when user taps refresh and weather loads successfully ("Updated …" reflects this tap). */
   const [lastManualRefreshAt, setLastManualRefreshAt] = useState<string | null>(null);
   const refreshInFlightRef = useRef(false);
+  const hasTrustedLiveLocation = isLive && accuracy > 0 && accuracy <= TRUSTED_GPS_ACCURACY_M;
+  const canFetchWeather = isOnline && isReady && (status !== 'granted' || hasTrustedLiveLocation);
 
   const prevCoordsRef = useRef<{ lat: number; lon: number } | null>(null);
 
@@ -65,13 +69,13 @@ export default function DashboardPage() {
     staleTime: 15 * 60 * 1000,
     gcTime:    60 * 60 * 1000,
     retry: isOnline ? 2 : 0,
-    enabled: isOnline && isReady,
+    enabled: canFetchWeather,
     initialData: !isOnline ? cachedWeather : undefined,
     // Keep weather stable while navigating tabs; refresh on interval or manual tap.
     refetchOnMount: false,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
-    refetchInterval: isOnline ? 15 * 60 * 1000 : false,
+    refetchInterval: canFetchWeather ? 15 * 60 * 1000 : false,
     refetchIntervalInBackground: false,
   });
 
@@ -84,6 +88,10 @@ export default function DashboardPage() {
     try {
       await refreshLocation();
       const { lat: la, lon: lo } = useGeoStore.getState();
+      const { status: nextStatus, accuracy: nextAccuracy } = useGeoStore.getState();
+      if (nextStatus === 'granted' && nextAccuracy > TRUSTED_GPS_ACCURACY_M) {
+        return;
+      }
       await qc.invalidateQueries({ queryKey: ['weather', la, lo], exact: true });
       await qc.fetchQuery({
         queryKey: ['weather', la, lo],
@@ -142,7 +150,11 @@ export default function DashboardPage() {
         <AppHeader />
         <div className="flex flex-col items-center justify-center flex-1 gap-4 px-8 text-center">
           <span className="text-5xl">🌐</span>
-          <p className="text-gray-600 text-sm">Unable to load weather. Check your connection.</p>
+          <p className="text-gray-600 text-sm max-w-xs leading-relaxed">
+            {isLive && accuracy > TRUSTED_GPS_ACCURACY_M
+              ? 'Your browser only gave a rough location. Try refresh again, move near a window, or use phone GPS.'
+              : 'Unable to load weather. Check your connection.'}
+          </p>
           <button onClick={() => refreshWeatherAndLocation()}
             className="px-5 py-2.5 bg-primary-600 text-white rounded-xl text-sm font-semibold">
             Retry
@@ -169,18 +181,25 @@ export default function DashboardPage() {
       <div className="flex-1 overflow-y-auto">
         {/* Location row */}
         <div className="px-4 pt-4 flex items-center justify-between">
-          <div className="flex items-center gap-1.5 min-w-0 flex-1 mr-2">
-            <MapPin size={13} className={`shrink-0 ${!isLive ? 'text-amber-500' : 'text-primary-600'}`} />
-            <span className="text-sm font-medium text-gray-700 truncate">{location}, PH</span>
-            {isLive ? (
-              <span className="shrink-0 text-xs text-green-600 bg-green-50 px-1.5 py-0.5 rounded-full font-medium flex items-center gap-0.5">
-                <Navigation size={9} /> Live{accuracy ? ` +/-${accuracy}m` : ''}
-              </span>
-            ) : (
-              <span className="shrink-0 text-xs text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full font-medium">
-                Estimated
-              </span>
-            )}
+          <div className="min-w-0 flex-1 mr-2">
+            <div className="flex items-start gap-1.5 min-w-0">
+              <MapPin size={13} className={`shrink-0 mt-0.5 ${!hasTrustedLiveLocation ? 'text-amber-500' : 'text-primary-600'}`} />
+              <span className="text-sm font-medium text-gray-700 leading-snug break-words min-w-0">{location}, PH</span>
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-1.5">
+              {hasTrustedLiveLocation ? (
+                <span className="shrink-0 text-[11px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded-full font-medium inline-flex items-center gap-0.5">
+                  <Navigation size={9} /> Live +/-{accuracy}m
+                </span>
+              ) : (
+                <span className="shrink-0 text-[11px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full font-medium">
+                  {isLive && accuracy ? `Imprecise +/-${accuracy}m` : 'Estimated'}
+                </span>
+              )}
+              {isLive && accuracy > TRUSTED_GPS_ACCURACY_M && (
+                <span className="text-[11px] text-gray-400">Use phone GPS or refresh outdoors</span>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <span className="text-xs text-gray-400">{updatedLabel}</span>
@@ -294,9 +313,9 @@ export default function DashboardPage() {
 
 function LocationBanner({ reason, onRetry }: { reason: string; onRetry: () => void }) {
   return (
-    <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 flex items-center gap-2">
+    <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 flex items-start gap-2">
       <AlertTriangle size={14} className="text-amber-600 shrink-0" />
-      <span className="text-xs text-amber-800 flex-1">
+      <span className="text-xs text-amber-800 flex-1 min-w-0 leading-snug break-words">
         {reason || 'Location unavailable'} — using Olongapo weather
       </span>
       <button onClick={onRetry}
