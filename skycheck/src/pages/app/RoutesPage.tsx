@@ -1,15 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
-import { createRoute, getRoutes, deleteRoute } from '../../api';
+import { getRoutes, deleteRoute } from '../../api';
 import type { Route } from '../../types';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
-import {
-  getOfflineRouteEntries,
-  offlineEntryToRoute,
-  removeOfflineRoute,
-  type OfflineRouteEntry,
-} from '../../services/offlineRoutes';
 import RouteCard from '../../components/RouteCard';
 import DeleteConfirmModal from '../../components/DeleteConfirmModal';
 import { RouteCardSkeleton } from '../../components/SkeletonLoader';
@@ -23,7 +17,6 @@ export default function RoutesPage() {
   const [deleteTarget, setDeleteTarget] = useState<Route | null>(null);
   const [editTarget, setEditTarget] = useState<Route | null>(null);
   const [showAddSheet, setShowAddSheet] = useState(false);
-  const [offlineEntries, setOfflineEntries] = useState<OfflineRouteEntry[]>(() => getOfflineRouteEntries());
 
   const { data: routes = [], isLoading } = useQuery({
     queryKey: ['routes'],
@@ -31,34 +24,8 @@ export default function RoutesPage() {
     staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
     refetchOnMount: isOnline ? 'always' : false,
-    enabled: isOnline,
+    retry: isOnline ? 1 : 0,
   });
-
-  useEffect(() => {
-    setOfflineEntries(getOfflineRouteEntries());
-  }, [showAddSheet]);
-
-  useEffect(() => {
-    if (!isOnline || offlineEntries.length === 0) return;
-    let cancelled = false;
-
-    async function syncOfflineRoutes() {
-      for (const entry of getOfflineRouteEntries()) {
-        if (cancelled) return;
-        try {
-          await createRoute(entry.payload);
-          removeOfflineRoute(entry.id);
-          setOfflineEntries(getOfflineRouteEntries());
-        } catch {
-          return;
-        }
-      }
-      qc.invalidateQueries({ queryKey: ['routes'] });
-    }
-
-    syncOfflineRoutes();
-    return () => { cancelled = true; };
-  }, [isOnline, offlineEntries.length, qc]);
 
   const { mutate: doDelete, isPending: isDeleting } = useMutation({
     mutationFn: (id: string) => deleteRoute(id),
@@ -68,8 +35,7 @@ export default function RoutesPage() {
     },
   });
 
-  const offlineRoutes = useMemo(() => offlineEntries.map(offlineEntryToRoute), [offlineEntries]);
-  const visibleRoutes = useMemo(() => [...offlineRoutes, ...routes], [offlineRoutes, routes]);
+  const visibleRoutes = useMemo(() => routes, [routes]);
   const limitReached = visibleRoutes.length >= MAX_ROUTES;
 
   return (
@@ -80,9 +46,10 @@ export default function RoutesPage() {
         <div className="flex items-center gap-3">
           <span className="text-xs text-gray-500 font-medium">{visibleRoutes.length}/{MAX_ROUTES} saved</span>
           <button
-            onClick={() => setShowAddSheet(true)}
-            disabled={limitReached}
+            onClick={() => isOnline && setShowAddSheet(true)}
+            disabled={limitReached || !isOnline}
             className="p-2 bg-primary-600 text-white rounded-xl disabled:opacity-40 hover:bg-primary-700 transition-colors"
+            title={!isOnline ? 'Internet is required to add routes' : 'Add route'}
           >
             <Plus size={18} />
           </button>
@@ -95,7 +62,7 @@ export default function RoutesPage() {
 
         {!isOnline && (
           <div className="p-3 bg-amber-50 border border-amber-200 rounded-2xl text-amber-700 text-sm">
-            Offline mode: showing saved routes. New routes will sync when internet returns.
+            Offline mode: showing your last saved routes. Adding or editing routes needs internet.
           </div>
         )}
 
@@ -104,22 +71,15 @@ export default function RoutesPage() {
           <RouteCard
             key={route.id}
             route={route}
-            onEdit={route.isPendingSync ? undefined : r => { setEditTarget(r); setShowAddSheet(true); }}
-            onDelete={r => {
-              if (r.isPendingSync) {
-                removeOfflineRoute(r.id);
-                setOfflineEntries(getOfflineRouteEntries());
-                return;
-              }
-              setDeleteTarget(r);
-            }}
+            onEdit={isOnline ? r => { setEditTarget(r); setShowAddSheet(true); } : undefined}
+            onDelete={isOnline ? r => setDeleteTarget(r) : undefined}
           />
         ))}
 
         {/* Add route CTA rows */}
-        {!isLoading && !limitReached && (
+        {!isLoading && !limitReached && isOnline && (
           <button
-            onClick={() => setShowAddSheet(true)}
+            onClick={() => isOnline && setShowAddSheet(true)}
             className="w-full py-4 border-2 border-dashed border-gray-200 rounded-2xl text-sm font-medium text-gray-500 hover:border-primary-400 hover:text-primary-600 transition-colors flex items-center justify-center gap-2"
           >
             <Plus size={16} /> Add a new route
@@ -166,7 +126,6 @@ export default function RoutesPage() {
           editRoute={editTarget}
           onClose={() => { setShowAddSheet(false); setEditTarget(null); }}
           onSaved={() => {
-            setOfflineEntries(getOfflineRouteEntries());
             qc.invalidateQueries({ queryKey: ['routes'] });
             setShowAddSheet(false);
             setEditTarget(null);

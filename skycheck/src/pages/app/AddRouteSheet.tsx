@@ -4,7 +4,6 @@ import { X, MapPin, School, Clock, Tag, Bookmark } from 'lucide-react';
 import { createRoute, updateRoute, previewRoute } from '../../api';
 import type { CreateRoutePayload, Route, NominatimResult, RoutePreview } from '../../types';
 import { searchAddress, shortenAddress } from '../../services/nominatimService';
-import { addOfflineRoute } from '../../services/offlineRoutes';
 import { useDebounce } from '../../hooks/useDebounce';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import { formatDistance, formatDuration, formatFare, getApiErrorMessage } from '../../utils';
@@ -118,12 +117,7 @@ export default function AddRouteSheet({ editRoute, onClose, onSaved }: AddRouteS
     try {
       const payload = buildPayload();
       if (!isOnline) {
-        if (isEdit) {
-          setApiError('Editing saved routes needs internet. You can add a new offline route instead.');
-          return;
-        }
-        addOfflineRoute(payload, preview ?? undefined);
-        onSaved();
+        setApiError('Internet connection is required to save routes.');
         return;
       }
       doSave();
@@ -162,7 +156,7 @@ export default function AddRouteSheet({ editRoute, onClose, onSaved }: AddRouteS
 
           {!isOnline && (
             <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-700 text-sm">
-              Offline mode: selected routes can be saved now and synced when internet returns.
+              Offline mode: route viewing is available, but adding or editing routes needs internet.
             </div>
           )}
 
@@ -304,7 +298,7 @@ export default function AddRouteSheet({ editRoute, onClose, onSaved }: AddRouteS
           {/* Save CTA */}
           <button
             onClick={handleSave}
-            disabled={isPending || !start.selected || !dest.selected}
+            disabled={isPending || !isOnline || !start.selected || !dest.selected}
             className="w-full py-3.5 bg-primary-600 text-white font-semibold rounded-xl hover:bg-primary-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 mt-2"
           >
             {isPending

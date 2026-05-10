@@ -95,7 +95,6 @@ export interface Route {
   risk: CombinedRisk;
   maximFare: { min: number; max: number };
   createdAt: string;
-  isPendingSync?: boolean;
 }
 
 export interface CreateRoutePayload {

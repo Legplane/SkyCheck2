@@ -25,7 +25,7 @@ export default function RouteCard({ route, onEdit, onDelete }: RouteCardProps) {
   const { data: liveWeather, isFetching: isRefreshingRisk } = useQuery({
     queryKey: ['route-card-live-risk', route.id, route.startLat, route.startLon],
     queryFn: () => fetchWeather(route.startLat, route.startLon),
-    enabled: isOnline && hasUnknownRisk && !route.isPendingSync,
+    enabled: isOnline && hasUnknownRisk,
     staleTime: 15 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
     retry: 1,
@@ -44,11 +44,6 @@ export default function RouteCard({ route, onEdit, onDelete }: RouteCardProps) {
           <div className="flex items-center gap-1 mt-0.5">
             <Clock size={11} className="text-gray-400" />
             <span className="text-xs text-gray-500">Depart {route.departTime}</span>
-            {route.isPendingSync && (
-              <span className="text-[10px] font-semibold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
-                Pending sync
-              </span>
-            )}
           </div>
         </div>
         <div className="flex gap-1">
