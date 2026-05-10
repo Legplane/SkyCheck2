@@ -57,7 +57,7 @@ function setAccuWeatherCooldown(hours: number): void {
 function shouldCooldown(e: unknown): boolean {
   if (!axios.isAxiosError(e)) return false;
   const status = e.response?.status;
-  return status === 401 || status === 403 || status === 429 || status === 503 || e.code === 'ECONNABORTED';
+  return status === 401 || status === 403 || status === 429;
 }
 
 function logAccuWeatherFailure(label: string, e: unknown): void {
@@ -115,9 +115,9 @@ export interface AWHourly {
 }
 
 export async function accuWeatherGeoposition(
-  lat: number, lon: number, apiKey: string,
+  lat: number, lon: number, apiKey: string, force = false,
 ): Promise<AccuGeoResult | null> {
-  if (isAccuWeatherCoolingDown()) return null;
+  if (!force && isAccuWeatherCoolingDown()) return null;
   const cacheKey = coordCacheKey(lat, lon);
   const cached = getFresh(geoCache, cacheKey, GEO_TTL_MS);
   if (cached !== null) return cached;
@@ -137,8 +137,8 @@ export async function accuWeatherGeoposition(
   }
 }
 
-export async function accuWeatherCurrent(locationKey: string, apiKey: string): Promise<AWCurrent | null> {
-  if (isAccuWeatherCoolingDown()) return null;
+export async function accuWeatherCurrent(locationKey: string, apiKey: string, force = false): Promise<AWCurrent | null> {
+  if (!force && isAccuWeatherCoolingDown()) return null;
   const cacheKey = locationKey;
   const cached = getFresh(currentCache, cacheKey, FORECAST_TTL_MS);
   if (cached !== null) return cached;
@@ -157,8 +157,8 @@ export async function accuWeatherCurrent(locationKey: string, apiKey: string): P
   }
 }
 
-export async function accuWeatherHourly24(locationKey: string, apiKey: string): Promise<AWHourly[]> {
-  if (isAccuWeatherCoolingDown()) return [];
+export async function accuWeatherHourly24(locationKey: string, apiKey: string, force = false): Promise<AWHourly[]> {
+  if (!force && isAccuWeatherCoolingDown()) return [];
   const cacheKey = locationKey;
   const cached = getFresh(hourlyCache, cacheKey, FORECAST_TTL_MS);
   if (cached !== null) return cached;

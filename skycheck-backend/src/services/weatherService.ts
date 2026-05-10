@@ -364,6 +364,23 @@ function buildAccuWeatherOnlyForecast(
     if (hourly.length >= 6) break;
   }
 
+  if (hourly.length === 0) {
+    for (let i = 1; i <= 6; i++) {
+      hourly.push({
+        time: new Date((nowUnix + i * 3600) * 1000).toLocaleTimeString('en-PH', {
+          hour:   '2-digit',
+          minute: '2-digit',
+          hour12: true,
+          timeZone: 'Asia/Manila',
+        }),
+        temperature: current.temperature,
+        weatherCode: current.weatherCode,
+        weatherIcon: current.weatherIcon,
+        precipitationProbability: current.precipitationProbability,
+      });
+    }
+  }
+
   return { current, hourly };
 }
 
@@ -559,6 +576,7 @@ export async function fetchWeatherData(lat: number, lon: number): Promise<{
   }
 
   if (!om && awKey) {
+    console.info('[Weather] Using AccuWeather as primary fallback because Open-Meteo did not respond');
     const awOnly = await fetchAccuWeatherForecast(lat, lon, awKey);
     if (awOnly) {
       const payload: WeatherCachePayload = {
