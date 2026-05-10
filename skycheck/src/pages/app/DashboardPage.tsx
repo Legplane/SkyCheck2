@@ -55,13 +55,17 @@ export default function DashboardPage() {
     prevCoordsRef.current = { lat, lon };
   }, [lat, lon, status, qc]);
 
-  const { data, isLoading, isFetching, dataUpdatedAt } = useQuery({
+  const cachedWeather = qc.getQueriesData<Awaited<ReturnType<typeof fetchWeather>>>({ queryKey: ['weather'] })
+    .find(([, cached]) => Boolean(cached))?.[1];
+
+  const { data: liveData, isLoading, isFetching, dataUpdatedAt } = useQuery({
     queryKey: ['weather', lat, lon],
     queryFn:  () => fetchWeather(lat, lon),
     staleTime: 15 * 60 * 1000,
     gcTime:    60 * 60 * 1000,
     retry: isOnline ? 2 : 0,
     enabled: isOnline && isReady,
+    initialData: !isOnline ? cachedWeather : undefined,
     // Keep weather stable while navigating tabs; refresh on interval or manual tap.
     refetchOnMount: false,
     refetchOnWindowFocus: false,
@@ -69,6 +73,8 @@ export default function DashboardPage() {
     refetchInterval: isOnline ? 15 * 60 * 1000 : false,
     refetchIntervalInBackground: false,
   });
+
+  const data = liveData ?? (!isOnline ? cachedWeather : undefined);
 
   const refreshWeatherAndLocation = useCallback(async () => {
     if (!isOnline || !isReady || refreshInFlightRef.current) return;

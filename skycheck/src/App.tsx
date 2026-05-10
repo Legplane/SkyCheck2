@@ -77,11 +77,11 @@ export default function App() {
       client={queryClient}
       persistOptions={{
         persister,
-        maxAge: 30 * 60 * 1000,
+        maxAge: 24 * 60 * 60 * 1000,
         dehydrateOptions: {
           shouldDehydrateQuery: (query) => {
             const key = Array.isArray(query.queryKey) ? String(query.queryKey[0]) : '';
-            return !['weather', 'go-no-go'].includes(key);
+            return !['go-no-go'].includes(key);
           },
         },
       }}

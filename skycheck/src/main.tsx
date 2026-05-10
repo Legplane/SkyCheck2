@@ -18,14 +18,14 @@ try {
       clientState?: { queries?: Array<{ queryKey: unknown[] }> };
     };
     if (parsed?.clientState?.queries) {
-      const VOLATILE = new Set(['weather', 'go-no-go']);
+      const VOLATILE = new Set(['go-no-go']);
       const before = parsed.clientState.queries.length;
       parsed.clientState.queries = parsed.clientState.queries.filter(
         (q) => !Array.isArray(q.queryKey) || !VOLATILE.has(q.queryKey[0] as string)
       );
       if (parsed.clientState.queries.length !== before) {
         localStorage.setItem('skycheck-query-cache', JSON.stringify(parsed));
-        console.info('[SkyCheck] Cleared stale location weather from cache');
+        console.info('[SkyCheck] Cleared volatile decision cache');
       }
     }
   }
