@@ -26,6 +26,18 @@ let _watchId:  number | null = null;
 let _timer:    ReturnType<typeof setTimeout> | null = null;
 let _resolved  = false;
 let _bestFix: GeolocationPosition | null = null;
+const IDEAL_ACCURACY_M = 80;
+const MAX_TRUSTED_ACCURACY_M = 500;
+
+function _distanceM(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6_371_000;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) *
+    Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 function _isBetterFix(pos: GeolocationPosition, current: GeolocationPosition | null): boolean {
   if (!current) return true;
@@ -43,13 +55,20 @@ function _applyFix(pos: GeolocationPosition, set: (state: Partial<GeoState>) => 
   });
 }
 
+function _clearTimer() {
+  if (_timer !== null) {
+    clearTimeout(_timer);
+    _timer = null;
+  }
+}
+
 function _stopGPS() {
   if (_watchId !== null) {
     navigator.geolocation.clearWatch(_watchId);
     _watchId = null;
   }
   if (_timer !== null) {
-    clearTimeout(_timer);
+    _clearTimer();
     _timer = null;
   }
 }
@@ -63,9 +82,9 @@ export const useGeoStore = create<GeoState>((set, get) => ({
 
   startGPS: () => {
     const currentStatus = get().status;
-    // Once permission is granted, the browser remembers it. If a request is
-    // stuck, allow the user button to restart the GPS attempt.
-    if (currentStatus === 'granted') return;
+    // Once permission is granted, the browser remembers it. Keep the watcher
+    // alive, but allow a stuck request to restart.
+    if (currentStatus === 'granted' && _watchId !== null) return;
 
     if (!('geolocation' in navigator)) {
       set({ status: 'unavailable', reason: 'GPS not supported on this device' });
@@ -77,26 +96,44 @@ export const useGeoStore = create<GeoState>((set, get) => ({
     _stopGPS();
     set({ status: 'requesting', reason: '' });
 
-    // Hard fallback after 20 seconds
+    // Use only a trusted fix. A wide browser/IP estimate can put the user in
+    // the wrong barangay, so do not fetch weather from that.
     _timer = setTimeout(() => {
       if (!_resolved) {
         _resolved = true;
-        _stopGPS();
-        if (_bestFix) {
+        _clearTimer();
+        if (_bestFix && _bestFix.coords.accuracy <= MAX_TRUSTED_ACCURACY_M) {
           _applyFix(_bestFix, set);
         } else {
-          set({ status: 'denied', reason: 'Location timed out', lat: OLONGAPO.lat, lon: OLONGAPO.lon, accuracy: 0 });
+          set({
+            status: 'denied',
+            reason: 'Precise location unavailable',
+            lat: OLONGAPO.lat,
+            lon: OLONGAPO.lon,
+            accuracy: _bestFix ? Math.round(_bestFix.coords.accuracy) : 0,
+          });
         }
       }
     }, 12000);
 
     const onSuccess = (pos: GeolocationPosition) => {
-      if (_resolved) return;
       if (_isBetterFix(pos, _bestFix)) _bestFix = pos;
+      const { lat: currentLat, lon: currentLon, accuracy: currentAccuracy, status } = get();
+      const distance = _distanceM(currentLat, currentLon, pos.coords.latitude, pos.coords.longitude);
+      const trusted = pos.coords.accuracy <= MAX_TRUSTED_ACCURACY_M;
 
-      if (pos.coords.accuracy <= 80) {
+      if (!_resolved && pos.coords.accuracy <= IDEAL_ACCURACY_M) {
         _resolved = true;
-        _stopGPS();
+        _clearTimer();
+        _applyFix(pos, set);
+        return;
+      }
+
+      if (_resolved && trusted && (
+        status !== 'granted' ||
+        pos.coords.accuracy + 25 < currentAccuracy ||
+        distance > Math.max(80, pos.coords.accuracy)
+      )) {
         _applyFix(pos, set);
       }
     };
@@ -104,15 +141,22 @@ export const useGeoStore = create<GeoState>((set, get) => ({
     const onError = (err: GeolocationPositionError) => {
       if (_resolved) return;
       _resolved = true;
-      _stopGPS();
+      _clearTimer();
       const reason =
         err.code === 1 ? 'Location permission denied'
         : err.code === 2 ? 'Location unavailable'
         : 'Location timed out';
-      if (_bestFix) {
+      if (_bestFix && _bestFix.coords.accuracy <= MAX_TRUSTED_ACCURACY_M) {
         _applyFix(_bestFix, set);
       } else {
-        set({ status: 'denied', reason, lat: OLONGAPO.lat, lon: OLONGAPO.lon, accuracy: 0 });
+        if (err.code === 1) _stopGPS();
+        set({
+          status: 'denied',
+          reason,
+          lat: OLONGAPO.lat,
+          lon: OLONGAPO.lon,
+          accuracy: _bestFix ? Math.round(_bestFix.coords.accuracy) : 0,
+        });
       }
     };
 
@@ -145,15 +189,15 @@ export const useGeoStore = create<GeoState>((set, get) => ({
 
     navigator.geolocation.getCurrentPosition(
       (pos) => {
-        const { latitude, longitude, accuracy } = pos.coords;
-        set({
-          status:   'granted',
-          lat:      latitude,
-          lon:      longitude,
-          accuracy: Math.round(accuracy),
-          reason:   '',
-        });
-        resolve(true);
+        if (pos.coords.accuracy <= MAX_TRUSTED_ACCURACY_M) {
+          _applyFix(pos, set);
+          if (_watchId === null) get().startGPS();
+          resolve(true);
+        } else {
+          set({ reason: 'Waiting for a more precise GPS location', accuracy: Math.round(pos.coords.accuracy) });
+          if (_watchId === null) get().startGPS();
+          resolve(false);
+        }
       },
       () => {
         resolve(false);
