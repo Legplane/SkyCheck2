@@ -8,6 +8,13 @@ import axios from 'axios';
 // ─────────────────────────────────────────────────────────────────
 
 const AW_BASE = 'https://dataservice.accuweather.com';
+const GEO_TTL_MS = 24 * 60 * 60 * 1000;
+const FORECAST_TTL_MS = 30 * 60 * 1000;
+
+const geoCache = new Map<string, { cachedAt: number; result: AccuGeoResult | null }>();
+const currentCache = new Map<string, { cachedAt: number; result: AWCurrent | null }>();
+const hourlyCache = new Map<string, { cachedAt: number; result: AWHourly[] }>();
+let quotaCooldownUntil = 0;
 
 export interface AccuGeoResult {
   locationKey: string;
@@ -18,6 +25,52 @@ interface AWGeoResponse {
   Key?:            string | number;
   LocalizedName?:  string;
   EnglishName?:    string;
+}
+
+function coordCacheKey(lat: number, lon: number): string {
+  return `${Math.round(lat * 100) / 100},${Math.round(lon * 100) / 100}`;
+}
+
+function getFresh<T>(cache: Map<string, { cachedAt: number; result: T }>, key: string, ttlMs: number): T | null {
+  const entry = cache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.cachedAt > ttlMs) {
+    cache.delete(key);
+    return null;
+  }
+  return entry.result;
+}
+
+function remember<T>(cache: Map<string, { cachedAt: number; result: T }>, key: string, result: T): T {
+  cache.set(key, { cachedAt: Date.now(), result });
+  return result;
+}
+
+function isAccuWeatherCoolingDown(): boolean {
+  return Date.now() < quotaCooldownUntil;
+}
+
+function setAccuWeatherCooldown(hours: number): void {
+  quotaCooldownUntil = Date.now() + hours * 60 * 60 * 1000;
+}
+
+function shouldCooldown(e: unknown): boolean {
+  if (!axios.isAxiosError(e)) return false;
+  const status = e.response?.status;
+  return status === 401 || status === 403 || status === 429 || status === 503 || e.code === 'ECONNABORTED';
+}
+
+function logAccuWeatherFailure(label: string, e: unknown): void {
+  const status = axios.isAxiosError(e) ? e.response?.status : null;
+  const code = axios.isAxiosError(e) ? e.code : null;
+  if (status === 429) console.warn(`[Weather] AccuWeather ${label} daily limit reached - using Open-Meteo fallback today`);
+  else if (status === 401 || status === 403) console.warn(`[Weather] AccuWeather ${label} key rejected - using Open-Meteo fallback`);
+  else if (code === 'ECONNABORTED') console.warn(`[Weather] AccuWeather ${label} timed out - using Open-Meteo fallback`);
+  else console.warn(`[Weather] AccuWeather ${label} failed - using Open-Meteo fallback`);
+}
+
+export function accuWeatherAvailable(): boolean {
+  return !isAccuWeatherCoolingDown();
 }
 
 /** AccuWeather icon (1–44+) → WMO-style code used by risk + labels in this app */
@@ -64,43 +117,61 @@ export interface AWHourly {
 export async function accuWeatherGeoposition(
   lat: number, lon: number, apiKey: string,
 ): Promise<AccuGeoResult | null> {
+  if (isAccuWeatherCoolingDown()) return null;
+  const cacheKey = coordCacheKey(lat, lon);
+  const cached = getFresh(geoCache, cacheKey, GEO_TTL_MS);
+  if (cached !== null) return cached;
+
   try {
     const { data } = await axios.get<AWGeoResponse>(`${AW_BASE}/locations/v1/cities/geoposition/search`, {
       params: { apikey: apiKey, q: `${lat},${lon}` },
-      timeout: 8000,
+      timeout: 5000,
     });
-    if (data?.Key === undefined || data?.Key === null) return null;
+    if (data?.Key === undefined || data?.Key === null) return remember(geoCache, cacheKey, null);
     const placeName = (data.LocalizedName || data.EnglishName || '').trim();
-    return { locationKey: String(data.Key), placeName };
+    return remember(geoCache, cacheKey, { locationKey: String(data.Key), placeName });
   } catch (e) {
-    console.warn('[Weather] AccuWeather geoposition failed', e);
+    logAccuWeatherFailure('geoposition', e);
+    if (shouldCooldown(e)) setAccuWeatherCooldown(24);
     return null;
   }
 }
 
 export async function accuWeatherCurrent(locationKey: string, apiKey: string): Promise<AWCurrent | null> {
+  if (isAccuWeatherCoolingDown()) return null;
+  const cacheKey = locationKey;
+  const cached = getFresh(currentCache, cacheKey, FORECAST_TTL_MS);
+  if (cached !== null) return cached;
+
   try {
     const { data } = await axios.get<AWCurrent[]>(`${AW_BASE}/currentconditions/v1/${locationKey}`, {
       params: { apikey: apiKey, details: true, metric: true },
-      timeout: 8000,
+      timeout: 5000,
     });
     const row = data?.[0];
-    return row ?? null;
+    return remember(currentCache, cacheKey, row ?? null);
   } catch (e) {
-    console.warn('[Weather] AccuWeather current conditions failed', e);
+    logAccuWeatherFailure('current conditions', e);
+    if (shouldCooldown(e)) setAccuWeatherCooldown(24);
     return null;
   }
 }
 
 export async function accuWeatherHourly24(locationKey: string, apiKey: string): Promise<AWHourly[]> {
+  if (isAccuWeatherCoolingDown()) return [];
+  const cacheKey = locationKey;
+  const cached = getFresh(hourlyCache, cacheKey, FORECAST_TTL_MS);
+  if (cached !== null) return cached;
+
   try {
     const { data } = await axios.get<AWHourly[]>(`${AW_BASE}/forecasts/v1/hourly/24hour/${locationKey}`, {
       params: { apikey: apiKey, metric: true, details: true },
-      timeout: 8000,
+      timeout: 5000,
     });
-    return Array.isArray(data) ? data : [];
+    return remember(hourlyCache, cacheKey, Array.isArray(data) ? data : []);
   } catch (e) {
-    console.warn('[Weather] AccuWeather hourly forecast failed', e);
+    logAccuWeatherFailure('hourly forecast', e);
+    if (shouldCooldown(e)) setAccuWeatherCooldown(24);
     return [];
   }
 }
