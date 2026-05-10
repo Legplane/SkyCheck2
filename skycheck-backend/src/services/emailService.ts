@@ -1,5 +1,33 @@
 import nodemailer from 'nodemailer';
 
+function cleanSecret(value: string | undefined): string | undefined {
+  const cleaned = value?.trim().replace(/\s+/g, '');
+  return cleaned || undefined;
+}
+
+function smtpUser(): string | undefined {
+  return process.env.SMTP_USER?.trim() || process.env.EMAIL_USER?.trim() || undefined;
+}
+
+function smtpPass(): string | undefined {
+  return cleanSecret(process.env.SMTP_PASS) || cleanSecret(process.env.EMAIL_PASS);
+}
+
+export function getEmailConfigStatus() {
+  const host = process.env.SMTP_HOST?.trim();
+  const user = smtpUser();
+  const pass = smtpPass();
+
+  return {
+    configured: Boolean(user && pass),
+    provider: host ? 'smtp' : 'gmail',
+    hasUser: Boolean(user),
+    hasPassword: Boolean(pass),
+    from: process.env.EMAIL_FROM?.trim() || process.env.EMAIL_USER?.trim() || '',
+    frontendUrl: frontendUrl(),
+  };
+}
+
 function frontendUrl(): string {
   return (
     process.env.FRONTEND_URL?.trim()
@@ -13,17 +41,17 @@ function getTransporter() {
   const smtpHost = process.env.SMTP_HOST?.trim();
   const smtpPort = Number(process.env.SMTP_PORT?.trim() || '587');
   const smtpSecure = (process.env.SMTP_SECURE?.trim().toLowerCase() || 'false') === 'true';
-  const smtpUser = process.env.SMTP_USER?.trim() || process.env.EMAIL_USER?.trim();
-  const smtpPass = process.env.SMTP_PASS?.trim() || process.env.EMAIL_PASS?.trim();
+  const user = smtpUser();
+  const pass = smtpPass();
 
-  if (smtpHost && smtpUser && smtpPass) {
+  if (smtpHost && user && pass) {
     return nodemailer.createTransport({
       host: smtpHost,
       port: smtpPort,
       secure: smtpSecure,
       auth: {
-        user: smtpUser,
-        pass: smtpPass,
+        user,
+        pass,
       },
       connectionTimeout: 20_000,
       greetingTimeout: 20_000,
@@ -34,8 +62,8 @@ function getTransporter() {
   return nodemailer.createTransport({
     service: 'gmail',
     auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
+      user,
+      pass,
     },
   });
 }
@@ -73,6 +101,8 @@ function emailBase(title: string, body: string): string {
 export async function sendVerificationEmail(to: string, name: string, token: string): Promise<void> {
   const link    = `${frontendUrl()}/auth/verify?token=${encodeURIComponent(token)}`;
   const fromEmail = process.env.EMAIL_FROM?.trim() || process.env.EMAIL_USER;
+  const status = getEmailConfigStatus();
+  if (!status.configured) throw new Error('[Email] Missing EMAIL_USER/EMAIL_PASS or SMTP credentials.');
 
   const body = `
     <p style="color:#374151;font-size:15px;line-height:1.6;">Hi <strong>${name}</strong>,</p>
@@ -96,11 +126,14 @@ export async function sendVerificationEmail(to: string, name: string, token: str
     subject: 'Verify your SkyCheck account',
     html:    emailBase('Verify Your Email', body),
   });
+  console.info(`[Email] Verification email sent to ${to} via ${status.provider}.`);
 }
 
 export async function sendPasswordResetEmail(to: string, name: string, token: string): Promise<void> {
   const link    = `${frontendUrl()}/auth/reset-password?token=${encodeURIComponent(token)}`;
   const fromEmail = process.env.EMAIL_FROM?.trim() || process.env.EMAIL_USER;
+  const status = getEmailConfigStatus();
+  if (!status.configured) throw new Error('[Email] Missing EMAIL_USER/EMAIL_PASS or SMTP credentials.');
 
   const body = `
     <p style="color:#374151;font-size:15px;line-height:1.6;">Hi <strong>${name}</strong>,</p>
@@ -124,4 +157,5 @@ export async function sendPasswordResetEmail(to: string, name: string, token: st
     subject: 'Reset your SkyCheck password',
     html:    emailBase('Password Reset Request', body),
   });
+  console.info(`[Email] Password reset email sent to ${to} via ${status.provider}.`);
 }

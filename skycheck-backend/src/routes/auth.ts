@@ -5,7 +5,7 @@ import rateLimit from 'express-rate-limit';
 import { OAuth2Client } from 'google-auth-library';
 import { PrismaClient } from '@prisma/client';
 import { signToken, requireAuth } from '../middleware/auth';
-import { sendVerificationEmail, sendPasswordResetEmail } from '../services/emailService';
+import { sendVerificationEmail, sendPasswordResetEmail, getEmailConfigStatus } from '../services/emailService';
 import { RISK } from '../constants/risk';
 
 const router = Router();
@@ -21,7 +21,7 @@ function requireEmailVerification(): boolean {
 }
 
 function emailIsConfigured(): boolean {
-  return Boolean(process.env.EMAIL_USER?.trim() && process.env.EMAIL_PASS?.trim());
+  return getEmailConfigStatus().configured;
 }
 
 function googleClientId(): string | null {
@@ -93,7 +93,7 @@ router.post('/register', async (req: Request, res: Response) => {
 
     if (mustVerify) {
       if (!emailIsConfigured()) {
-        console.warn('[Email] EMAIL_USER/EMAIL_PASS missing; cannot send verification email.');
+        console.warn('[Email] Cannot send verification email; email service is not configured.', getEmailConfigStatus());
       } else {
         await sendVerificationEmail(user.email, user.name, verifyTok).catch(err =>
           console.error('[Email] Failed to send verification:', err)
@@ -348,10 +348,17 @@ router.post('/resend-verification', resetLimiter, async (req: Request, res: Resp
       const verifyTok = crypto.randomBytes(32).toString('hex');
       const verifyExp = new Date(Date.now() + RISK.AUTH.VERIFY_EXPIRE_H * 60 * 60 * 1000);
       await prisma.user.update({ where: { id: user.id }, data: { verifyTok, verifyExp } });
-      await sendVerificationEmail(user.email, user.name, verifyTok).catch(console.error);
+      await sendVerificationEmail(user.email, user.name, verifyTok).catch(err =>
+        console.error('[Email] Failed to resend verification:', err)
+      );
+    } else if (!user) {
+      console.info(`[Email] Verification resend requested for unknown email: ${email.toLowerCase()}`);
+    } else if (user.isVerified) {
+      console.info(`[Email] Verification resend skipped; account already verified: ${email.toLowerCase()}`);
     }
     res.json(SAME_MSG);
-  } catch {
+  } catch (err) {
+    console.error('[Email] Resend verification route failed:', err);
     res.json(SAME_MSG);
   }
 });
@@ -368,10 +375,17 @@ router.post('/forgot-password', resetLimiter, async (req: Request, res: Response
       const resetTok = crypto.randomBytes(32).toString('hex');
       const resetExp = new Date(Date.now() + RISK.AUTH.RESET_EXPIRE_H * 60 * 60 * 1000);
       await prisma.user.update({ where: { id: user.id }, data: { resetTok, resetExp } });
-      await sendPasswordResetEmail(user.email, user.name, resetTok).catch(console.error);
+      await sendPasswordResetEmail(user.email, user.name, resetTok).catch(err =>
+        console.error('[Email] Failed to send password reset:', err)
+      );
+    } else if (!user) {
+      console.info(`[Email] Password reset requested for unknown email: ${email.toLowerCase()}`);
+    } else if (!user.passHash) {
+      console.info(`[Email] Password reset skipped; account uses Google login: ${email.toLowerCase()}`);
     }
     res.json(SAME_MSG);
-  } catch {
+  } catch (err) {
+    console.error('[Email] Forgot password route failed:', err);
     res.json(SAME_MSG);
   }
 });
