@@ -74,12 +74,14 @@ export function formatDuration(minutes: number): string {
 // Input Validation
 // ─────────────────────────────────────────────────────────────────
 export function validateEmail(email: string): string | null {
+  if (!email.trim()) return 'Please enter your email address.';
   const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  return re.test(email) ? null : 'Invalid email format';
+  return re.test(email.trim()) ? null : 'Please enter a valid email address.';
 }
 
 export function validatePassword(password: string): string | null {
-  if (password.length < 8) return 'Password must be at least 8 characters';
+  if (!password) return 'Please enter your password.';
+  if (password.length < 8) return 'Password must be at least 8 characters.';
   return null;
 }
 
@@ -118,6 +120,23 @@ export function clsx(...classes: (string | undefined | false | null)[]): string 
 
 }
 export function getApiErrorMessage(error: any, fallback?: string): string {
+  const code = typeof error?.code === 'string' ? error.code : '';
+  const firebaseMessages: Record<string, string> = {
+    'auth/missing-email': 'Please enter your email address.',
+    'auth/invalid-email': 'Please enter a valid email address.',
+    'auth/missing-password': 'Please enter your password.',
+    'auth/invalid-credential': 'Invalid email or password. Try again.',
+    'auth/user-not-found': 'No account was found with that email.',
+    'auth/wrong-password': 'Invalid email or password. Try again.',
+    'auth/email-already-in-use': 'This email is already registered. Try signing in instead.',
+    'auth/weak-password': 'Password must be at least 8 characters.',
+    'auth/popup-closed-by-user': 'Google sign-in was closed before it finished.',
+    'auth/unauthorized-domain': 'This website is not authorized for Firebase sign-in.',
+    'auth/network-request-failed': 'Network error. Check your internet connection and try again.',
+    'auth/too-many-requests': 'Too many attempts. Please wait a moment and try again.',
+  };
+  if (code && firebaseMessages[code]) return firebaseMessages[code];
+
   // If the error comes from an Axios/API response
   if (error?.response?.data?.error) {
     return error.response.data.error;

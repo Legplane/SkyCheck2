@@ -21,9 +21,24 @@ export default function LoginPage() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
+
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail && !password) {
+      setError('Please fill in your email and password.');
+      return;
+    }
+    if (!cleanEmail) {
+      setError('Please enter your email address.');
+      return;
+    }
+    if (!password) {
+      setError('Please enter your password.');
+      return;
+    }
+
     setIsLoading(true);
     try {
-      const credential = await signInWithEmailAndPassword(firebaseAuth, email.trim().toLowerCase(), password);
+      const credential = await signInWithEmailAndPassword(firebaseAuth, cleanEmail, password);
       if (!credential.user.emailVerified) {
         await signOut(firebaseAuth);
         setError('Please verify your email address before logging in.');
