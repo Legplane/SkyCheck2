@@ -316,7 +316,7 @@ function LocationBanner({ reason, onRetry }: { reason: string; onRetry: () => vo
     <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 flex items-start gap-2">
       <AlertTriangle size={14} className="text-amber-600 shrink-0" />
       <span className="text-xs text-amber-800 flex-1 min-w-0 leading-snug break-words">
-        {reason || 'Location unavailable'} — using {FALLBACK_LOCATION.label} weather
+        {reason || 'Location unavailable'} — using {FALLBACK_LOCATION.label} weather. For better location accuracy, use the mobile version.
       </span>
       <button onClick={onRetry}
         className="text-xs font-semibold text-amber-700 underline shrink-0">
