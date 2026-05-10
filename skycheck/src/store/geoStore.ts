@@ -109,19 +109,6 @@ export const useGeoStore = create<GeoState>((set, get) => ({
       return;
     }
 
-    if ('permissions' in navigator) {
-      navigator.permissions.query({ name: 'geolocation' as PermissionName })
-        .then((permission) => {
-          if (permission.state === 'denied') {
-            _resolved = true;
-            _bestFix = null;
-            _stopGPS();
-            _applyFallback(set, 'Location permission is blocked in your browser. Enable GPS in site settings.');
-          }
-        })
-        .catch(() => undefined);
-    }
-
     _resolved = false;
     _bestFix = null;
     _stopGPS();
@@ -182,7 +169,7 @@ export const useGeoStore = create<GeoState>((set, get) => ({
     // Phase 1: fast low-accuracy attempt (~1–2 s)
     navigator.geolocation.getCurrentPosition(
       onSuccess,
-      () => { /* silent fail — watchPosition continues */ },
+      onError,
       { enableHighAccuracy: true, maximumAge: 0, timeout: GPS_SETTLE_TIMEOUT_MS }
     );
 

@@ -44,6 +44,7 @@ export default function DashboardPage() {
   /** ISO — set when user taps refresh and weather loads successfully ("Updated …" reflects this tap). */
   const [lastManualRefreshAt, setLastManualRefreshAt] = useState<string | null>(null);
   const refreshInFlightRef = useRef(false);
+  const gpsTapRef = useRef(0);
   const hasTrustedLiveLocation = isLive && accuracy > 0 && accuracy <= TRUSTED_GPS_ACCURACY_M;
   const canFetchWeather = isOnline && isReady && (status !== 'granted' || hasTrustedLiveLocation);
 
@@ -79,6 +80,13 @@ export default function DashboardPage() {
   });
 
   const data = liveData ?? (!isOnline ? cachedWeather : undefined);
+
+  const handleStartGPS = useCallback(() => {
+    const now = Date.now();
+    if (now - gpsTapRef.current < 800) return;
+    gpsTapRef.current = now;
+    startGPS();
+  }, [startGPS]);
 
   const refreshWeatherAndLocation = useCallback(async () => {
     if (!isOnline || !isReady || refreshInFlightRef.current) return;
@@ -117,9 +125,14 @@ export default function DashboardPage() {
           <p className="text-sm text-gray-500 leading-relaxed">
             Tap <strong>Allow</strong> when your browser asks for location access.
           </p>
-          <button onClick={startGPS}
-            className="px-6 py-3 bg-primary-600 text-white rounded-xl text-sm font-semibold">
-            Allow GPS Access
+          <button
+            type="button"
+            onClick={handleStartGPS}
+            onMouseDown={handleStartGPS}
+            onTouchStart={handleStartGPS}
+            onPointerUp={handleStartGPS}
+            className="relative z-20 min-h-12 min-w-44 px-6 py-3 bg-primary-600 text-white rounded-xl text-sm font-semibold shadow-card touch-manipulation hover:bg-primary-700 active:scale-[0.98] transition">
+            {status === 'requesting' ? 'Checking GPS...' : 'Allow GPS Access'}
           </button>
         </div>
       </div>
@@ -132,7 +145,7 @@ export default function DashboardPage() {
       <div className="flex flex-col min-h-screen w-full max-w-6xl mx-auto bg-gray-50">
         <AppHeader />
         {status === 'denied' && (
-          <LocationBanner reason={reason} onRetry={startGPS} />
+          <LocationBanner reason={reason} onRetry={handleStartGPS} />
         )}
         <DashboardSkeleton />
       </div>
@@ -170,7 +183,7 @@ export default function DashboardPage() {
   return (
     <div className="flex flex-col min-h-screen w-full max-w-6xl mx-auto bg-gray-50 pb-20">
       {!isOnline && <OfflineBanner cachedAt={updatedLabel} />}
-      {status === 'denied' && <LocationBanner reason={reason} onRetry={startGPS} />}
+      {status === 'denied' && <LocationBanner reason={reason} onRetry={handleStartGPS} />}
 
       <AppHeader />
 
@@ -314,8 +327,13 @@ function LocationBanner({ reason, onRetry }: { reason: string; onRetry: () => vo
       <span className="text-xs text-amber-800 flex-1 min-w-0 leading-snug break-words">
         {reason || 'Precise location unavailable'} Showing {FALLBACK_LOCATION.label} weather instead. For accurate tracking, use the mobile version.
       </span>
-      <button onClick={onRetry}
-        className="text-xs font-semibold text-amber-700 underline shrink-0">
+      <button
+        type="button"
+        onClick={onRetry}
+        onMouseDown={onRetry}
+        onTouchStart={onRetry}
+        onPointerUp={onRetry}
+        className="relative z-20 min-h-10 px-2 text-xs font-semibold text-amber-700 underline shrink-0 touch-manipulation">
         Allow GPS
       </button>
     </div>
