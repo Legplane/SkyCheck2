@@ -63,8 +63,9 @@ export const useGeoStore = create<GeoState>((set, get) => ({
 
   startGPS: () => {
     const currentStatus = get().status;
-    // Do not restart while we already have a fix or an active request.
-    if (currentStatus === 'granted' || currentStatus === 'requesting') return;
+    // Once permission is granted, the browser remembers it. If a request is
+    // stuck, allow the user button to restart the GPS attempt.
+    if (currentStatus === 'granted') return;
 
     if (!('geolocation' in navigator)) {
       set({ status: 'unavailable', reason: 'GPS not supported on this device' });
@@ -87,13 +88,13 @@ export const useGeoStore = create<GeoState>((set, get) => ({
           set({ status: 'denied', reason: 'Location timed out', lat: OLONGAPO.lat, lon: OLONGAPO.lon, accuracy: 0 });
         }
       }
-    }, 20000);
+    }, 12000);
 
     const onSuccess = (pos: GeolocationPosition) => {
       if (_resolved) return;
       if (_isBetterFix(pos, _bestFix)) _bestFix = pos;
 
-      if (pos.coords.accuracy <= 120) {
+      if (pos.coords.accuracy <= 80) {
         _resolved = true;
         _stopGPS();
         _applyFix(pos, set);
@@ -119,13 +120,13 @@ export const useGeoStore = create<GeoState>((set, get) => ({
     navigator.geolocation.getCurrentPosition(
       onSuccess,
       () => { /* silent fail — watchPosition continues */ },
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 8000 }
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 10000 }
     );
 
     // Phase 2: high-accuracy continuous watch
     _watchId = navigator.geolocation.watchPosition(
       onSuccess, onError,
-      { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 }
+      { enableHighAccuracy: true, maximumAge: 0, timeout: 12000 }
     );
   },
 
