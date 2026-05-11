@@ -153,6 +153,26 @@ function calibratedRainProbability(args: {
     calibrated = Math.min(Math.round(base * 0.65), dryCap);
   }
 
+  // Open-Meteo can keep PoP very high after an afternoon shower even when
+  // expected liquid and cloud cover have already dropped. Cap those cases so
+  // the fallback stays close to AccuWeather's Olongapo city trend.
+  let amountCap: number | undefined;
+  if (hourlyWetMm < 0.05 && !wetCode) {
+    amountCap = args.cloudCover >= 85 ? 55 : args.cloudCover >= 60 ? 35 : args.cloudCover >= 35 ? 25 : 15;
+  } else if (hourlyWetMm < 0.1) {
+    amountCap = args.cloudCover >= 85 ? 55 : args.cloudCover >= 60 ? 35 : 25;
+  } else if (hourlyWetMm < 0.3) {
+    amountCap = args.cloudCover >= 85 ? 55 : args.cloudCover >= 60 ? 40 : 30;
+  } else if (hourlyWetMm < 0.5) {
+    amountCap = args.cloudCover >= 85 ? 55 : args.cloudCover >= 70 ? 45 : 35;
+  } else if (hourlyWetMm < 1) {
+    amountCap = args.cloudCover >= 90 ? 65 : args.cloudCover >= 70 ? 55 : 45;
+  }
+
+  if (amountCap !== undefined && args.minutelyTotalMm < 1) {
+    calibrated = Math.min(calibrated, amountCap);
+  }
+
   return clampPercent(calibrated);
 }
 
@@ -185,6 +205,57 @@ function calibratedFeelsLike(tempC: number, apparentC: number, humidity: number)
     return roundOne(Math.max(apparentC, heatIndex));
   }
   return roundOne(apparentC);
+}
+
+function olongapoTemperatureBias(hour: number): number {
+  if (hour === 12) return -0.5;
+  if (hour === 13) return -1.2;
+  if (hour >= 14 && hour <= 18) return 1.1;
+  if (hour >= 19 && hour <= 22) return 1.8;
+  return 0.5;
+}
+
+function olongapoHumidityBias(hour: number): number {
+  if (hour >= 12 && hour <= 14) return 8;
+  if (hour >= 15 && hour <= 18) return 4;
+  return 0;
+}
+
+function calibrateOpenMeteoCityFallback(forecast: {
+  current: CurrentWeather;
+  hourly: HourlyForecast[];
+}): { current: CurrentWeather; hourly: HourlyForecast[] } {
+  const currentHour = new Date(forecast.current.updatedAt).toLocaleTimeString('en-PH', {
+    hour: 'numeric', hour12: false, timeZone: 'Asia/Manila',
+  });
+  const hour = Number.parseInt(currentHour, 10);
+  const temp = roundOne(forecast.current.temperature + olongapoTemperatureBias(hour));
+  const humidity = clampPercent(forecast.current.humidity + olongapoHumidityBias(hour));
+  const windSpeed = Math.round(Math.max(
+    forecast.current.windSpeed,
+    (forecast.current.windGust ?? forecast.current.windSpeed) * 0.72,
+  ));
+
+  const current: CurrentWeather = {
+    ...forecast.current,
+    temperature: temp,
+    humidity,
+    windSpeed,
+    feelsLike: calibratedFeelsLike(temp, forecast.current.feelsLike, humidity),
+  };
+
+  const hourly = forecast.hourly.map((h) => {
+    const parsed = /(\d+)/.exec(h.time);
+    const rawHour = parsed ? Number.parseInt(parsed[1], 10) : hour;
+    const isPm = /PM/i.test(h.time);
+    const localHour = isPm && rawHour !== 12 ? rawHour + 12 : (!isPm && rawHour === 12 ? 0 : rawHour);
+    return {
+      ...h,
+      temperature: roundOne(h.temperature + olongapoTemperatureBias(localHour)),
+    };
+  });
+
+  return { current, hourly };
 }
 
 function blendPercent(primary: number, secondary: number, primaryWeight = 0.6): number {
@@ -592,7 +663,7 @@ async function fetchOpenMeteoForecast(lat: number, lon: number): Promise<{
     }
   }
 
-  return { current, hourly };
+  return calibrateOpenMeteoCityFallback({ current, hourly });
 }
 
 export async function fetchWeatherData(lat: number, lon: number): Promise<{
