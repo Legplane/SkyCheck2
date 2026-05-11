@@ -23,10 +23,10 @@ export async function fetchTrafficLevel(lat: number, lon: number): Promise<Traff
   const cached = getCachedTraffic(lat, lon);
   if (cached) return cached;
 
-  const live = await fetchTomTomPoint(lat, lon, 'near you');
+  const live = await fetchTomTomCityArea(lat, lon);
   if (live) return cacheTraffic(lat, lon, live);
 
-  return rushHourFallback('live traffic temporarily unavailable', lat, lon);
+  return rushHourFallback('city-wide live traffic temporarily unavailable', lat, lon);
 }
 
 export async function fetchRouteTrafficLevel(
@@ -115,6 +115,43 @@ async function fetchTomTomPoint(lat: number, lon: number, label: string): Promis
     }
     return null;
   }
+}
+
+async function fetchTomTomCityArea(lat: number, lon: number): Promise<TrafficResult | null> {
+  // Roughly 1.5-2 km city-area samples. This is more stable than one GPS point,
+  // especially when mobile GPS lands inside a subdivision/campus instead of on a road.
+  const latStep = 0.015;
+  const lonStep = 0.015;
+  const samples = await Promise.allSettled([
+    fetchTomTomPoint(lat, lon, 'city center'),
+    fetchTomTomPoint(lat + latStep, lon, 'north city area'),
+    fetchTomTomPoint(lat - latStep, lon, 'south city area'),
+    fetchTomTomPoint(lat, lon + lonStep, 'east city area'),
+    fetchTomTomPoint(lat, lon - lonStep, 'west city area'),
+  ]);
+
+  const live = samples
+    .filter((sample): sample is PromiseFulfilledResult<TrafficResult | null> => sample.status === 'fulfilled')
+    .map(sample => sample.value)
+    .filter((sample): sample is TrafficResult => Boolean(sample));
+
+  if (live.length === 0) return null;
+
+  const worst = live.reduce((slowest, sample) =>
+    sample.congestionRatio < slowest.congestionRatio ? sample : slowest,
+  );
+  const currentSpeed = live.reduce((sum, sample) => sum + sample.currentSpeed, 0) / live.length;
+  const freeFlowSpeed = live.reduce((sum, sample) => sum + sample.freeFlowSpeed, 0) / live.length;
+
+  return {
+    congestionRatio: worst.congestionRatio,
+    currentSpeed: Math.round(currentSpeed),
+    freeFlowSpeed: Math.round(freeFlowSpeed),
+    riskLevel: worst.riskLevel,
+    volumeLevel: worst.volumeLevel,
+    source: 'tomtom',
+    label: `City-wide traffic volume: ${trafficVolumeLabel(worst.volumeLevel)} (${live.length}/5 TomTom samples)`,
+  };
 }
 
 export function getTomTomStatus(): {
