@@ -16,6 +16,18 @@ export function formatFare(fare: { min: number; max: number }): string {
   return `₱${fare.min}–₱${fare.max}`;
 }
 
+export function fareStatusLabel(status: 'available' | 'conditional' | 'not_recommended'): string {
+  if (status === 'not_recommended') return 'Limited';
+  if (status === 'conditional') return 'Check route';
+  return 'Available';
+}
+
+export function fareStatusClass(status: 'available' | 'conditional' | 'not_recommended'): string {
+  if (status === 'not_recommended') return 'bg-red-50 text-red-600';
+  if (status === 'conditional') return 'bg-amber-50 text-amber-700';
+  return 'bg-green-50 text-green-700';
+}
+
 // ─────────────────────────────────────────────────────────────────
 // Date / Time Formatters
 // ─────────────────────────────────────────────────────────────────

@@ -262,7 +262,7 @@ Users can save routes with:
 - Departure time
 - Distance
 - Duration
-- Fare estimate
+- Multi-mode fare estimates
 - Last known route risk
 
 Route risk includes:
@@ -276,6 +276,15 @@ Route risk includes:
 Saved routes are refreshed by the backend and cached on the frontend. Offline mode can show the last cached saved routes, but adding, editing, and deleting routes require internet.
 
 The route preview map uses Leaflet with MapTiler street tiles when a key is configured, otherwise it falls back to OpenStreetMap tiles. The map now zooms closer for route endpoints so nearby streets and barangay-level detail are easier to inspect.
+
+Fare estimates include:
+
+- Jeepney - based on current LTFRB public fare guidance for traditional and modern jeepneys; shown as conditional because the route must have an available jeepney line.
+- Tricycle - shown as conditional or limited because tricycle fares and routes are controlled by LGUs, and tricycles are generally for local zones rather than long or national-highway trips.
+- Taxi - based on LTFRB taxi fare formula using flag-down, per-kilometer, and per-minute travel time charges.
+- Maxim - app-based motorcycle ride estimate with a demand/availability buffer.
+
+The fare feature is an estimate and budgeting aid, not an official fare matrix. Final fares may change due to local ordinances, route availability, traffic, waiting time, or app demand.
 
 ## 13. Go / No-Go Engine
 

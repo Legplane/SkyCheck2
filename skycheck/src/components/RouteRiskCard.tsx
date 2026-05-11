@@ -6,6 +6,7 @@ import RiskBadge from './RiskBadge';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { RISK_BG_LIGHT } from '../constants/risk';
 import { formatFare } from '../utils';
+import FareEstimateList from './FareEstimateList';
 
 // ─────────────────────────────────────────────────────────────────
 // RouteRiskCard
@@ -115,6 +116,12 @@ export default function RouteRiskCard({ route }: RouteRiskCardProps) {
       {/* Risk basis */}
       {risk.basis && (
         <p className="text-[10px] text-gray-500 mt-1.5 leading-relaxed">{risk.basis}</p>
+      )}
+
+      {route.fareEstimates && route.fareEstimates.length > 0 && (
+        <div className="mt-2">
+          <FareEstimateList fares={route.fareEstimates} compact />
+        </div>
       )}
     </div>
   );

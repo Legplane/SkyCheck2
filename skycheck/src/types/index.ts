@@ -94,6 +94,7 @@ export interface Route {
   durationMin: number;
   risk: CombinedRisk;
   maximFare: { min: number; max: number };
+  fareEstimates?: FareEstimate[];
   createdAt: string;
 }
 
@@ -112,7 +113,20 @@ export interface RoutePreview {
   distanceKm: number;
   durationMin: number;
   maximFare: { min: number; max: number };
+  fareEstimates?: FareEstimate[];
   waypoints?: [number, number][];  // [[lat,lon], ...]
+}
+
+export type FareMode = 'maxim' | 'jeepney' | 'tricycle' | 'taxi';
+
+export interface FareEstimate {
+  mode: FareMode;
+  label: string;
+  icon: string;
+  min: number;
+  max: number;
+  status: 'available' | 'conditional' | 'not_recommended';
+  note: string;
 }
 
 // ── Alerts ────────────────────────────────────────────────────────

@@ -6,6 +6,7 @@ import RiskBadge from './RiskBadge';
 import SubRiskRow from './SubRiskRow';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { formatFare, formatDistance, formatDuration } from '../utils';
+import FareEstimateList from './FareEstimateList';
 
 interface RouteCardProps {
   route: Route;
@@ -99,6 +100,9 @@ export default function RouteCard({ route, onEdit, onDelete }: RouteCardProps) {
           🛵 {formatFare(route.maximFare)}
         </span>
       </div>
+      {route.fareEstimates && route.fareEstimates.length > 0 && (
+        <FareEstimateList fares={route.fareEstimates} compact />
+      )}
     </div>
   );
 }

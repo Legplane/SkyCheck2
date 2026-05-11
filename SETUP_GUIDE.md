@@ -739,6 +739,17 @@ ORS (OpenRouteService) returns errors for:
 
 The backend falls back to straight-line haversine distance if ORS fails, so the app still works.
 
+### Fare estimates look different from actual driver quotes
+
+SkyCheck estimates several transport modes for budgeting:
+
+- Jeepney uses LTFRB public fare guidance and assumes a jeepney route exists.
+- Taxi uses LTFRB taxi matrix style calculation.
+- Tricycle is marked conditional/limited because fares and allowed routes are set by local LGUs, and tricycles may be restricted from national highways or out-of-zone trips.
+- Maxim/app-based rides can change due to demand, driver availability, or platform pricing.
+
+Treat these as commute planning estimates, not official receipts.
+
 ---
 
 ## 12. API Architecture Decisions

@@ -6,7 +6,7 @@ import { fetchWeatherData } from '../services/weatherService';
 import { evaluateCombinedRisk, evaluateRouteCombinedRisk } from '../services/combinedRiskService';
 import { fetchTrafficLevel } from '../services/trafficService';
 import { evaluateRouteFloodRisk } from '../services/floodService';
-import { estimateMaximFare } from '../utils/maximFare';
+import { estimateFareOptions, estimateMaximFare } from '../utils/fareEstimates';
 import { RISK } from '../constants/risk';
 
 const router = Router();
@@ -134,6 +134,7 @@ function serializeRoute(route: {
       basis:   route.lastRiskBasis,
     },
     maximFare: estimateMaximFare(route.distanceKm),
+    fareEstimates: estimateFareOptions(route.distanceKm, route.durationMin),
     createdAt: route.createdAt.toISOString(),
   };
 }
@@ -216,6 +217,7 @@ router.post('/preview', requireAuth, async (req: Request, res: Response) => {
       distanceKm:  calc.distanceKm,
       durationMin: calc.durationMin,
       maximFare:   estimateMaximFare(calc.distanceKm),
+      fareEstimates: estimateFareOptions(calc.distanceKm, calc.durationMin),
       waypoints:   calc.waypoints,
     });
   } catch (err) {

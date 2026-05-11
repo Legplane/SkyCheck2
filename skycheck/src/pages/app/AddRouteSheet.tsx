@@ -6,8 +6,9 @@ import type { CreateRoutePayload, Route, NominatimResult, RoutePreview } from '.
 import { searchAddress, shortenAddress } from '../../services/nominatimService';
 import { useDebounce } from '../../hooks/useDebounce';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
-import { formatDistance, formatDuration, formatFare, getApiErrorMessage } from '../../utils';
+import { formatDistance, formatDuration, getApiErrorMessage } from '../../utils';
 import MapView from '../../components/MapView';
+import FareEstimateList from '../../components/FareEstimateList';
 
 interface AddRouteSheetProps {
   editRoute?: Route | null;
@@ -245,20 +246,31 @@ export default function AddRouteSheet({ editRoute, onClose, onSaved }: AddRouteS
             <div className="text-center text-xs text-gray-400 py-2">Calculating route…</div>
           )}
           {preview && (
-            <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 flex gap-4 text-sm">
-              <div className="text-center">
-                <p className="font-bold text-gray-900">{formatDistance(preview.distanceKm)}</p>
-                <p className="text-xs text-gray-500">Distance</p>
+            <div className="space-y-3">
+              <div className="bg-blue-50 border border-blue-100 rounded-xl px-4 py-3 grid grid-cols-2 gap-3 text-sm">
+                <div className="text-center">
+                  <p className="font-bold text-gray-900">{formatDistance(preview.distanceKm)}</p>
+                  <p className="text-xs text-gray-500">Distance</p>
+                </div>
+                <div className="text-center">
+                  <p className="font-bold text-gray-900">{formatDuration(preview.durationMin)}</p>
+                  <p className="text-xs text-gray-500">Travel time</p>
+                </div>
               </div>
-              <div className="w-px bg-blue-200" />
-              <div className="text-center">
-                <p className="font-bold text-gray-900">{formatDuration(preview.durationMin)}</p>
-                <p className="text-xs text-gray-500">Travel time</p>
-              </div>
-              <div className="w-px bg-blue-200" />
-              <div className="text-center">
-                <p className="font-bold text-primary-600">🛵 {formatFare(preview.maximFare)}</p>
-                <p className="text-xs text-gray-500">Maxim est.</p>
+              <div>
+                <div className="mb-2 flex items-center justify-between gap-2">
+                  <p className="text-sm font-bold text-gray-900">Fare Estimates</p>
+                  <p className="text-right text-[10px] font-medium text-gray-400">Availability may vary</p>
+                </div>
+                <FareEstimateList fares={preview.fareEstimates ?? [{
+                  mode: 'maxim',
+                  label: 'Maxim',
+                  icon: '🛵',
+                  min: preview.maximFare.min,
+                  max: preview.maximFare.max,
+                  status: 'available',
+                  note: 'App-based ride estimate.',
+                }]} />
               </div>
             </div>
           )}
