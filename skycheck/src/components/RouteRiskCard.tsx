@@ -6,6 +6,7 @@ import RiskBadge from './RiskBadge';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { RISK_BG_LIGHT } from '../constants/risk';
 import FareEstimateList from './FareEstimateList';
+import { commuteRiskHeadline } from '../utils/riskMessages';
 
 // ─────────────────────────────────────────────────────────────────
 // RouteRiskCard
@@ -108,8 +109,11 @@ export default function RouteRiskCard({ route }: RouteRiskCardProps) {
       </div>
 
       {/* Risk basis */}
+      <p className="text-[10px] font-semibold text-gray-700 mt-1.5 leading-relaxed">
+        {commuteRiskHeadline(risk)}
+      </p>
       {risk.basis && (
-        <p className="text-[10px] text-gray-500 mt-1.5 leading-relaxed">{risk.basis}</p>
+        <p className="text-[10px] text-gray-500 mt-1 leading-relaxed">{risk.basis}</p>
       )}
 
       {route.fareEstimates && route.fareEstimates.length > 0 && (

@@ -7,6 +7,7 @@ import SubRiskRow from './SubRiskRow';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { formatDistance, formatDuration } from '../utils';
 import FareEstimateList from './FareEstimateList';
+import { commuteRiskHeadline } from '../utils/riskMessages';
 
 interface RouteCardProps {
   route: Route;
@@ -85,6 +86,10 @@ export default function RouteCard({ route, onEdit, onDelete }: RouteCardProps) {
           <span className="text-[10px] font-semibold text-gray-400">Refreshing...</span>
         )}
       </div>
+
+      <p className="text-[10px] font-semibold text-gray-700 leading-relaxed">
+        {commuteRiskHeadline(displayRisk)}
+      </p>
 
       {displayRisk.basis && (
         <p className="text-[10px] text-gray-500 leading-relaxed">{displayRisk.basis}</p>
