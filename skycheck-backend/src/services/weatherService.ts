@@ -188,6 +188,12 @@ function blendPercent(primary: number, secondary: number, primaryWeight = 0.6): 
   return clampPercent((p * primaryWeight) + (s * (1 - primaryWeight)));
 }
 
+function timeLabelFromUnix(unixSeconds: number): string {
+  return new Date(unixSeconds * 1000).toLocaleTimeString('en-PH', {
+    hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Manila',
+  });
+}
+
 function accuWeatherRainProbability(h: AWHourly): number | undefined {
   const candidates = [
     h.RainProbability,
@@ -196,6 +202,39 @@ function accuWeatherRainProbability(h: AWHourly): number | undefined {
   ].filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
   if (candidates.length === 0) return undefined;
   return Math.max(...candidates.map(clampPercent));
+}
+
+function blendedStreetRainProbability(args: {
+  openMeteoProbability: number;
+  accuWeatherProbability?: number;
+  liquidMm: number;
+  weatherCode: number;
+  cloudCover?: number;
+}): number {
+  const om = clampPercent(args.openMeteoProbability);
+  const aw = args.accuWeatherProbability !== undefined
+    ? clampPercent(args.accuWeatherProbability)
+    : undefined;
+  const cloudCover = args.cloudCover !== undefined ? clampPercent(args.cloudCover) : 70;
+  const wetCode = isRainCode(args.weatherCode);
+
+  if (aw === undefined) return om;
+
+  let blended = blendPercent(aw, om, args.liquidMm > 0 ? 0.62 : 0.52);
+
+  if (args.liquidMm >= 1) blended = Math.max(blended, 70);
+  else if (args.liquidMm >= 0.5) blended = Math.max(blended, 55);
+  else if (args.liquidMm >= 0.1) blended = Math.max(blended, 35);
+
+  if (!wetCode && args.liquidMm < 0.1 && om < 40 && aw < 60) {
+    blended = Math.min(blended, cloudCover >= 85 ? 45 : cloudCover >= 65 ? 35 : 25);
+  }
+
+  if (wetCode && args.liquidMm < 0.1 && om < 30) {
+    blended = Math.min(Math.max(blended, cloudCover >= 80 ? 30 : 25), 45);
+  }
+
+  return clampPercent(blended);
 }
 
 /** Max of sustained and gust @ 10 m — matches how conditions feel on a bike or when walking */
@@ -213,19 +252,21 @@ function mergeAccuWeatherReadings(
   const precipMm =
     awCurrent.PrecipitationSummary?.Precipitation?.Metric?.Value ?? om.current.precipitation;
 
-  let rainProb = om.current.precipitationProbability;
   const nextHr = awHourly.find(h => h.EpochDateTime >= nowUnix);
   const awRainProb = nextHr ? accuWeatherRainProbability(nextHr) : undefined;
-  if (awRainProb !== undefined) {
-    rainProb = blendPercent(awRainProb, rainProb, 0.65);
-  }
-
   const awHourlyLiquid = nextHr
     ? Math.max(
       safeNumber(nextHr.TotalLiquid?.Value, 0),
       safeNumber(nextHr.Rain?.Value, 0),
     )
     : 0;
+  const rainProb = blendedStreetRainProbability({
+    openMeteoProbability: om.current.precipitationProbability,
+    accuWeatherProbability: awRainProb,
+    liquidMm: Math.max(precipMm, awHourlyLiquid),
+    weatherCode: wmo,
+    cloudCover: nextHr?.CloudCover,
+  });
 
   const current: CurrentWeather = {
     ...om.current,
@@ -250,23 +291,21 @@ function mergeAccuWeatherReadings(
   for (const h of awHourly) {
     if (h.EpochDateTime < nowUnix) continue;
     const code = accuWeatherIconToWmo(h.WeatherIcon);
-    const omSameHour = om.hourly.find(row => row.time === new Date(h.EpochDateTime * 1000).toLocaleTimeString('en-PH', {
-      hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Manila',
-    }));
+    const timeLabel = timeLabelFromUnix(h.EpochDateTime);
+    const omSameHour = om.hourly.find(row => row.time === timeLabel);
     const awProb = accuWeatherRainProbability(h);
     const omProb = omSameHour?.precipitationProbability ?? 0;
     const liquidMm = Math.max(safeNumber(h.TotalLiquid?.Value, 0), safeNumber(h.Rain?.Value, 0));
-    const rainProbability = awProb !== undefined
-      ? blendPercent(awProb, omProb, liquidMm > 0 ? 0.75 : 0.65)
-      : omProb;
+    const rainProbability = blendedStreetRainProbability({
+      openMeteoProbability: omProb,
+      accuWeatherProbability: awProb,
+      liquidMm,
+      weatherCode: code,
+      cloudCover: h.CloudCover,
+    });
 
     hourly.push({
-      time: new Date(h.EpochDateTime * 1000).toLocaleTimeString('en-PH', {
-        hour:   '2-digit',
-        minute: '2-digit',
-        hour12: true,
-        timeZone: 'Asia/Manila',
-      }),
+      time: timeLabel,
       temperature: roundOne(h.Temperature.Value),
       weatherCode: code,
       weatherIcon: getWeatherIcon(code),
@@ -338,7 +377,13 @@ function buildAccuWeatherOnlyForecast(
       awCurrent.RelativeHumidity,
     ),
     humidity:                 clampPercent(awCurrent.RelativeHumidity),
-    precipitationProbability: clampPercent(nextHrRainProb ?? (awCurrent.HasPrecipitation ? 75 : 0)),
+    precipitationProbability: blendedStreetRainProbability({
+      openMeteoProbability: awCurrent.HasPrecipitation ? 65 : 0,
+      accuWeatherProbability: nextHrRainProb,
+      liquidMm: precipMm,
+      weatherCode: wmo,
+      cloudCover: nextHr?.CloudCover,
+    }),
     precipitation:            roundOne(precipMm),
     windSpeed:                Math.round(awCurrent.Wind.Speed.Metric.Value),
     weatherCode:              wmo,
@@ -352,17 +397,20 @@ function buildAccuWeatherOnlyForecast(
   for (const h of awHourly) {
     if (h.EpochDateTime < nowUnix) continue;
     const code = accuWeatherIconToWmo(h.WeatherIcon);
+    const liquidMm = Math.max(safeNumber(h.TotalLiquid?.Value, 0), safeNumber(h.Rain?.Value, 0));
+    const awProb = accuWeatherRainProbability(h);
     hourly.push({
-      time: new Date(h.EpochDateTime * 1000).toLocaleTimeString('en-PH', {
-        hour:   '2-digit',
-        minute: '2-digit',
-        hour12: true,
-        timeZone: 'Asia/Manila',
-      }),
+      time: timeLabelFromUnix(h.EpochDateTime),
       temperature: roundOne(h.Temperature.Value),
       weatherCode: code,
       weatherIcon: getWeatherIcon(code),
-      precipitationProbability: accuWeatherRainProbability(h) ?? (isRainCode(code) ? 65 : 0),
+      precipitationProbability: blendedStreetRainProbability({
+        openMeteoProbability: isRainCode(code) ? 45 : 0,
+        accuWeatherProbability: awProb,
+        liquidMm,
+        weatherCode: code,
+        cloudCover: h.CloudCover,
+      }),
     });
     if (hourly.length >= 6) break;
   }
@@ -370,12 +418,7 @@ function buildAccuWeatherOnlyForecast(
   if (hourly.length === 0) {
     for (let i = 1; i <= 6; i++) {
       hourly.push({
-        time: new Date((nowUnix + i * 3600) * 1000).toLocaleTimeString('en-PH', {
-          hour:   '2-digit',
-          minute: '2-digit',
-          hour12: true,
-          timeZone: 'Asia/Manila',
-        }),
+        time: timeLabelFromUnix(nowUnix + i * 3600),
         temperature: current.temperature,
         weatherCode: current.weatherCode,
         weatherIcon: current.weatherIcon,
