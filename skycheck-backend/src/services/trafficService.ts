@@ -25,7 +25,7 @@ export async function fetchTrafficLevel(lat: number, lon: number): Promise<Traff
   const live = await fetchTomTomPoint(lat, lon, 'near you');
   if (live) return cacheTraffic(lat, lon, live);
 
-  return rushHourFallback('TomTom point unavailable/timeout', lat, lon);
+  return rushHourFallback('live traffic temporarily unavailable', lat, lon);
 }
 
 export async function fetchRouteTrafficLevel(
@@ -39,16 +39,15 @@ export async function fetchRouteTrafficLevel(
 
   const midLat = (startLat + destLat) / 2;
   const midLon = (startLon + destLon) / 2;
-  const samples = await Promise.allSettled([
-    fetchTomTomPoint(startLat, startLon, 'route start'),
-    fetchTomTomPoint(midLat, midLon, 'route middle'),
-    fetchTomTomPoint(destLat, destLon, 'route destination'),
-  ]);
-
-  const live = samples
-    .filter((sample): sample is PromiseFulfilledResult<TrafficResult | null> => sample.status === 'fulfilled')
-    .map(sample => sample.value)
-    .filter((sample): sample is TrafficResult => Boolean(sample));
+  const live: TrafficResult[] = [];
+  for (const sample of [
+    { lat: startLat, lon: startLon, label: 'route start' },
+    { lat: midLat, lon: midLon, label: 'route middle' },
+    { lat: destLat, lon: destLon, label: 'route destination' },
+  ]) {
+    const result = await fetchTomTomPoint(sample.lat, sample.lon, sample.label);
+    if (result) live.push(result);
+  }
 
   if (live.length > 0) {
     const worst = live.reduce((slowest, sample) =>
@@ -73,7 +72,7 @@ export async function fetchRouteTrafficLevel(
     startLon,
     destLat,
     destLon,
-    rushHourFallback('route TomTom unavailable/timeout', midLat, midLon),
+    rushHourFallback('live route traffic temporarily unavailable', midLat, midLon),
   );
 }
 
@@ -87,7 +86,7 @@ async function fetchTomTomPoint(lat: number, lon: number, label: string): Promis
   try {
     const { data } = await axios.get<TomTomFlowResponse>(TOMTOM_BASE, {
       params: { key: TOMTOM_KEY, point: `${lat},${lon}` },
-      timeout: 4500,
+      timeout: 8000,
     });
 
     const { currentSpeed, freeFlowSpeed, confidence, roadClosure } = data.flowSegmentData;
@@ -205,7 +204,7 @@ function rushHourFallback(reason: string, lat = 14.8386, lon = 120.2842): Traffi
     riskLevel,
     volumeLevel: riskLevel === 'HIGH' ? 'HIGH' : riskLevel === 'MEDIUM' ? 'MEDIUM' : 'LOW',
     source: 'heuristic',
-    label: `Time-based estimate: ${trafficVolumeLabel(riskLevel)} (${reason})`,
+    label: `Time-based traffic volume: ${trafficVolumeLabel(riskLevel)}`,
   });
 }
 

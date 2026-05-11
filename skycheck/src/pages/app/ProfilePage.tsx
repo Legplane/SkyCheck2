@@ -121,6 +121,23 @@ export default function ProfilePage() {
           />
         </div>
 
+        <div className="bg-white mx-4 mt-3 rounded-2xl p-4 shadow-card">
+          <div className="flex items-start gap-3">
+            <Info size={18} className="mt-0.5 shrink-0 text-primary-600" />
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-gray-900">About SkyCheck</p>
+              <p className="mt-1 text-xs leading-relaxed text-gray-500">
+                Developed by Code-B from BSCS - 2C.
+              </p>
+              <div className="mt-3 grid gap-1 text-xs font-semibold leading-relaxed text-gray-700">
+                <span>Floyd Allen B. Bueno</span>
+                <span>Niño Bucud</span>
+                <span>Jerobal Bueno</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Data & Storage */}
         <SectionHeader title="DATA & STORAGE" />
         <div className="bg-white mx-4 rounded-2xl shadow-card overflow-hidden">
