@@ -1,7 +1,7 @@
 import axios from 'axios';
 import type { CurrentWeather, HourlyForecast, RiskLevel } from '../types';
 import { RISK, getWeatherLabel, getWeatherIcon } from '../constants/risk';
-import { getCachedWeather, setCachedWeather, type WeatherCachePayload } from './weatherCache';
+import { getCachedWeather, getStaleCachedWeather, setCachedWeather, type WeatherCachePayload } from './weatherCache';
 import {
   accuWeatherGeoposition,
   accuWeatherCurrent,
@@ -708,6 +708,16 @@ export async function fetchWeatherData(lat: number, lon: number): Promise<{
     if (status === 429) console.warn('[Weather] Open-Meteo daily/rate limit reached and AccuWeather fallback is unavailable');
     else if (code === 'ECONNABORTED') console.warn('[Weather] Open-Meteo timed out and AccuWeather fallback is unavailable');
     else console.warn('[Weather] Open-Meteo unavailable and AccuWeather fallback is unavailable');
+    const stale = getStaleCachedWeather(cityLat, cityLon);
+    if (stale) {
+      console.warn('[Weather] Provider outage - using stale cached city weather for continuity');
+      return {
+        current: stale.current,
+        hourly: stale.hourly,
+        weatherRisk: stale.weatherRisk,
+        ...(stale.providerPlaceName ? { providerPlaceName: stale.providerPlaceName } : {}),
+      };
+    }
     throw err;
   }
 

@@ -164,7 +164,7 @@ export default function GoNoGoPage() {
   }
 
   // ── Error ─────────────────────────────────────────────────────
-  if ((error && isOnline) || !resultToShow) {
+  if (!resultToShow) {
     return (
       <div className="flex flex-col min-h-screen w-full max-w-6xl mx-auto bg-gray-50">
         <PageHeader onBack={() => navigate(-1)} onRefresh={refetch} isFetching={false} />
@@ -255,7 +255,7 @@ export default function GoNoGoPage() {
                 <span className="break-words">Commute Basis</span>
               </h3>
               <span className="text-[11px] font-semibold text-primary-700 bg-primary-50 px-2 py-1 rounded-full shrink-0">
-                {selectedRoute ? 'Route TomTom' : 'City-level'}
+                {selectedRoute ? 'Route TomTom' : 'Live'}
               </span>
             </div>
             <div className="grid gap-2 sm:grid-cols-2">
@@ -271,7 +271,7 @@ export default function GoNoGoPage() {
               >
                 <p className="text-sm font-bold text-gray-900 break-words">Current location</p>
                 <p className="text-[11px] text-gray-500 leading-relaxed break-words">
-                  Uses city-level Olongapo traffic and weather by default.
+                  Uses your live GPS label with Olongapo-wide traffic and weather by default.
                 </p>
               </button>
               {routes.map((route) => {

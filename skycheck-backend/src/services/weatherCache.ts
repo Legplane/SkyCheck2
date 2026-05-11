@@ -25,6 +25,7 @@ export type WeatherCachePayload = Omit<CachedWeather, 'cachedAt'>;
 
 const cache = new Map<string, CachedWeather>();
 const TTL_MS = 15 * 60 * 1000;  // 15 minutes
+const STALE_TTL_MS = 6 * 60 * 60 * 1000; // emergency fallback for transient provider outages
 
 // Round to 3 decimal places (~110m precision) for cache key
 function cacheKey(lat: number, lon: number): string {
@@ -35,7 +36,19 @@ export function getCachedWeather(lat: number, lon: number): CachedWeather | null
   const key   = cacheKey(lat, lon);
   const entry = cache.get(key);
   if (!entry) return null;
-  if (Date.now() - entry.cachedAt > TTL_MS) {
+  if (Date.now() - entry.cachedAt > STALE_TTL_MS) {
+    cache.delete(key);
+    return null;
+  }
+  if (Date.now() - entry.cachedAt > TTL_MS) return null;
+  return entry;
+}
+
+export function getStaleCachedWeather(lat: number, lon: number): CachedWeather | null {
+  const key = cacheKey(lat, lon);
+  const entry = cache.get(key);
+  if (!entry) return null;
+  if (Date.now() - entry.cachedAt > STALE_TTL_MS) {
     cache.delete(key);
     return null;
   }
@@ -54,6 +67,6 @@ export function getCacheSize(): number {
 setInterval(() => {
   const now = Date.now();
   for (const [key, entry] of cache.entries()) {
-    if (now - entry.cachedAt > TTL_MS) cache.delete(key);
+    if (now - entry.cachedAt > STALE_TTL_MS) cache.delete(key);
   }
 }, 15 * 60 * 1000);

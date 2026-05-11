@@ -35,9 +35,10 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
     }
 
     // Weather and risk are city-level for stable provider matching.
+    // Display location still comes from the user's GPS point.
     const [{ current, hourly, providerPlaceName }, nominatim] = await Promise.all([
       fetchWeatherData(lat, lon),
-      resolvePhLocation(OLONGAPO_CITY_CENTER.lat, OLONGAPO_CITY_CENTER.lon),
+      resolvePhLocation(lat, lon),
     ]);
 
     const risk = await evaluateCombinedRisk(OLONGAPO_CITY_CENTER.lat, OLONGAPO_CITY_CENTER.lon, current);
@@ -94,6 +95,16 @@ function firstPlaceName(parts: Array<string | undefined>): string {
     .find(Boolean) ?? '';
 }
 
+function compactLocationName(name: string): string {
+  return stripPhPlaceSuffix(name)
+    .replace(/\bStreet\b/i, '')
+    .replace(/\bRoad\b/i, '')
+    .replace(/\bAvenue\b/i, 'Ave')
+    .replace(/\s+/g, ' ')
+    .replace(/,\s*$/, '')
+    .trim();
+}
+
 function pickDisplayLocation(input: {
   nominatim: string;
   accuWeatherLocality?: string;
@@ -107,7 +118,7 @@ function pickDisplayLocation(input: {
 
 async function resolvePhLocation(lat: number, lon: number): Promise<string> {
   try {
-    const zoom = '10'; // city / municipality level
+    const zoom = '17'; // street / barangay level
     const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=${zoom}&addressdetails=1`;
     const res  = await fetch(url, {
       headers: { 'User-Agent': 'SkyCheck-StudentApp/1.0 (gordoncollege.edu.ph)' },
@@ -118,25 +129,48 @@ async function resolvePhLocation(lat: number, lon: number): Promise<string> {
 
     const data = await res.json() as {
       address?: {
-        city?:           string;
-        municipality?: string;
-        county?:       string;
-        state?:        string;
-        town?:         string;
-        village?:      string;
+        road?:          string;
+        neighbourhood?: string;
+        suburb?:        string;
+        quarter?:       string;
+        city_district?: string;
+        barangay?:      string;
+        city?:          string;
+        municipality?:  string;
+        county?:        string;
+        state?:         string;
+        town?:          string;
+        village?:       string;
       };
     };
 
     const a = data.address;
     if (!a) return OLONGAPO_CITY_CENTER.label;
 
+    const local =
+      a.suburb ||
+      a.neighbourhood ||
+      a.quarter ||
+      a.city_district ||
+      a.barangay ||
+      a.village ||
+      a.road;
+
     const city =
       a.city ||
       a.municipality ||
       a.town ||
-      a.county;
+      a.county ||
+      OLONGAPO_CITY_CENTER.label;
 
-    return firstPlaceName([city, a.state]) || OLONGAPO_CITY_CENTER.label;
+    const localName = compactLocationName(local ?? '');
+    const cityName = compactLocationName(city);
+
+    if (localName && cityName && localName.toLowerCase() !== cityName.toLowerCase()) {
+      return `${localName}, ${cityName}`;
+    }
+
+    return firstPlaceName([cityName, a.state]) || OLONGAPO_CITY_CENTER.label;
   } catch {
     return OLONGAPO_CITY_CENTER.label;
   }

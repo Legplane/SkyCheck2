@@ -10,6 +10,7 @@ import axios from 'axios';
 const AW_BASE = 'https://dataservice.accuweather.com';
 const GEO_TTL_MS = 24 * 60 * 60 * 1000;
 const FORECAST_TTL_MS = 30 * 60 * 1000;
+const AW_TIMEOUT_MS = 8000;
 
 const geoCache = new Map<string, { cachedAt: number; result: AccuGeoResult | null }>();
 const currentCache = new Map<string, { cachedAt: number; result: AWCurrent | null }>();
@@ -125,7 +126,7 @@ export async function accuWeatherGeoposition(
   try {
     const { data } = await axios.get<AWGeoResponse>(`${AW_BASE}/locations/v1/cities/geoposition/search`, {
       params: { apikey: apiKey, q: `${lat},${lon}` },
-      timeout: 5000,
+      timeout: AW_TIMEOUT_MS,
     });
     if (data?.Key === undefined || data?.Key === null) return remember(geoCache, cacheKey, null);
     const placeName = (data.LocalizedName || data.EnglishName || '').trim();
@@ -146,7 +147,7 @@ export async function accuWeatherCurrent(locationKey: string, apiKey: string, fo
   try {
     const { data } = await axios.get<AWCurrent[]>(`${AW_BASE}/currentconditions/v1/${locationKey}`, {
       params: { apikey: apiKey, details: true, metric: true },
-      timeout: 5000,
+      timeout: AW_TIMEOUT_MS,
     });
     const row = data?.[0];
     return remember(currentCache, cacheKey, row ?? null);
@@ -166,7 +167,7 @@ export async function accuWeatherHourly24(locationKey: string, apiKey: string, f
   try {
     const { data } = await axios.get<AWHourly[]>(`${AW_BASE}/forecasts/v1/hourly/24hour/${locationKey}`, {
       params: { apikey: apiKey, metric: true, details: true },
-      timeout: 5000,
+      timeout: AW_TIMEOUT_MS,
     });
     return remember(hourlyCache, cacheKey, Array.isArray(data) ? data : []);
   } catch (e) {
