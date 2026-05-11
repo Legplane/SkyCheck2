@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -45,11 +45,16 @@ const STATUS_DOT: Record<GoNoGoFactor['status'], string> = {
   OK: 'bg-green-500', CAUTION: 'bg-amber-500', DANGER: 'bg-red-500',
 };
 
+const CURRENT_LOCATION_BASIS = 'current-location';
+const GO_NO_GO_ROUTE_BASIS_KEY = 'skycheck-go-no-go-route-basis';
+
 export default function GoNoGoPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const isOnline = useOnlineStatus();
-  const [selectedRouteId, setSelectedRouteId] = useState('');
+  const [selectedRouteId, setSelectedRouteId] = useState(() => (
+    localStorage.getItem(GO_NO_GO_ROUTE_BASIS_KEY) ?? ''
+  ));
   // Use global GPS store — no per-page GPS restart
   const lat      = useGeoStore((s) => s.lat);
   const lon      = useGeoStore((s) => s.lon);
@@ -68,7 +73,7 @@ export default function GoNoGoPage() {
 
   const healthKey = todayHealth ? healthCheckSignature(todayHealth) : 'none';
 
-  const { data: routes = [] } = useQuery({
+  const { data: routes = [], isFetched: routesFetched } = useQuery({
     queryKey: ['routes'],
     queryFn: getRoutes,
     staleTime: 5 * 60 * 1000,
@@ -78,15 +83,40 @@ export default function GoNoGoPage() {
   });
 
   const selectedRoute = routes.find((route) => route.id === selectedRouteId) ?? null;
+  const routeIdForEvaluation = selectedRoute?.id;
+  const hasResolvedRouteBasis =
+    selectedRouteId === CURRENT_LOCATION_BASIS || Boolean(routeIdForEvaluation);
+
+  useEffect(() => {
+    if (!routesFetched) return;
+
+    if (selectedRouteId === CURRENT_LOCATION_BASIS) {
+      localStorage.setItem(GO_NO_GO_ROUTE_BASIS_KEY, CURRENT_LOCATION_BASIS);
+      return;
+    }
+
+    const savedRouteStillExists = routes.some((route) => route.id === selectedRouteId);
+    const nextRouteId = savedRouteStillExists ? selectedRouteId : routes[0]?.id ?? CURRENT_LOCATION_BASIS;
+
+    if (nextRouteId !== selectedRouteId) {
+      setSelectedRouteId(nextRouteId);
+    }
+    localStorage.setItem(GO_NO_GO_ROUTE_BASIS_KEY, nextRouteId);
+  }, [routes, routesFetched, selectedRouteId]);
+
+  const chooseRouteBasis = (routeId: string) => {
+    setSelectedRouteId(routeId);
+    localStorage.setItem(GO_NO_GO_ROUTE_BASIS_KEY, routeId);
+  };
 
   const { data: liveResult, isLoading, isFetching, refetch, error } = useQuery({
     // Include health answers so updating the check invalidates cache and refetches evaluation.
-    queryKey: ['go-no-go', lat, lon, healthKey, selectedRouteId || 'current-location'],
-    queryFn:  () => evaluateGoNoGo({ lat, lon, routeId: selectedRouteId || undefined }),
+    queryKey: ['go-no-go', lat, lon, healthKey, routeIdForEvaluation ?? (selectedRouteId || 'pending-route-basis')],
+    queryFn:  () => evaluateGoNoGo({ lat, lon, routeId: routeIdForEvaluation }),
     staleTime: 5 * 60 * 1000,
     gcTime:    0,
     retry: 1,
-    enabled: isOnline && !!todayHealth,
+    enabled: isOnline && !!todayHealth && routesFetched && hasResolvedRouteBasis,
     refetchOnMount: false,
     refetchOnWindowFocus: false,
     refetchOnReconnect: true,
@@ -97,6 +127,7 @@ export default function GoNoGoPage() {
     ? buildOfflineGoNoGo(todayHealth, cachedWeather)
     : null;
   const resultToShow = liveResult ?? offlineResult;
+  const routeBasisLoading = isOnline && !!todayHealth && (!routesFetched || !hasResolvedRouteBasis);
 
   // ── No health check yet ───────────────────────────────────────
   if (!healthLoading && !todayHealth) {
@@ -125,7 +156,7 @@ export default function GoNoGoPage() {
   }
 
   // ── Loading ───────────────────────────────────────────────────
-  if ((isLoading && isOnline) || healthLoading) {
+  if ((isLoading && isOnline) || healthLoading || routeBasisLoading) {
     return (
       <div className="flex flex-col min-h-screen w-full max-w-6xl mx-auto bg-gray-50">
         <PageHeader onBack={() => navigate(-1)} onRefresh={refetch} isFetching={true} />
@@ -236,10 +267,10 @@ export default function GoNoGoPage() {
             <div className="grid gap-2 sm:grid-cols-2">
               <button
                 type="button"
-                onClick={() => setSelectedRouteId('')}
+                onClick={() => chooseRouteBasis(CURRENT_LOCATION_BASIS)}
                 className={clsx(
                   'text-left rounded-2xl border p-3 transition-colors min-w-0',
-                  selectedRouteId === ''
+                  selectedRouteId === CURRENT_LOCATION_BASIS
                     ? 'border-primary-300 bg-primary-50'
                     : 'border-gray-100 bg-gray-50 hover:bg-gray-100',
                 )}
@@ -255,7 +286,7 @@ export default function GoNoGoPage() {
                   <button
                     key={route.id}
                     type="button"
-                    onClick={() => setSelectedRouteId(route.id)}
+                    onClick={() => chooseRouteBasis(route.id)}
                     className={clsx(
                       'text-left rounded-2xl border p-3 transition-colors min-w-0',
                       selectedRouteId === route.id
