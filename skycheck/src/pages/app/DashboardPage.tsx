@@ -13,6 +13,7 @@ import HourlyForecastItem from '../../components/HourlyForecastItem';
 import { DashboardSkeleton } from '../../components/SkeletonLoader';
 import { RISK_BG_LIGHT, RISK_TEXT_COLORS } from '../../constants/risk';
 import { formatUpdatedAt } from '../../utils';
+import type { CombinedRisk } from '../../types';
 
 const TRUSTED_GPS_ACCURACY_M = 500;
 
@@ -24,6 +25,25 @@ function haversineM(lat1: number, lon1: number, lat2: number, lon2: number) {
     Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) *
     Math.sin(dLon / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function dashboardRiskHeadline(risk: CombinedRisk): string {
+  if (risk.overall === 'HIGH') {
+    if (risk.flood === 'HIGH') return 'High flood risk - avoid low-lying routes';
+    if (risk.traffic === 'HIGH') return 'Heavy traffic - expect major delays';
+    if (risk.weather === 'HIGH') return 'Severe weather - consider delaying your commute';
+    return 'High commute risk - proceed with extra caution';
+  }
+
+  if (risk.overall === 'MEDIUM') {
+    if (risk.flood === 'MEDIUM') return 'Possible flooding - monitor your route';
+    if (risk.traffic === 'MEDIUM') return 'Moderate traffic - allow extra travel time';
+    if (risk.weather === 'MEDIUM') return 'Rain or heat may affect your commute';
+    return 'Use caution - conditions may affect your commute';
+  }
+
+  if (risk.overall === 'UNKNOWN') return 'Some live risk data is unavailable';
+  return 'Great day to commute - conditions look clear';
 }
 
 export default function DashboardPage() {
@@ -258,9 +278,7 @@ export default function DashboardPage() {
             : risk.overall === 'MEDIUM' ? 'text-amber-700'
             : 'text-green-700'
           }`}>
-            {risk.overall === 'HIGH'   && 'Severe weather — consider delaying your commute'}
-            {risk.overall === 'MEDIUM' && 'Use caution — conditions may affect your commute'}
-            {risk.overall === 'LOW'    && 'Great day to commute! — weather is clear'}
+            {dashboardRiskHeadline(risk)}
           </p>
           <p className="text-xs text-gray-500">{risk.basis}</p>
           <div className="mt-3">

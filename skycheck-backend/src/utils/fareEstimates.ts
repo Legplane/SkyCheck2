@@ -6,6 +6,9 @@ export interface FareEstimate {
   icon: string;
   min: number;
   max: number;
+  discountMin: number;
+  discountMax: number;
+  discountNote: string;
   status: 'available' | 'conditional' | 'not_recommended';
   note: string;
 }
@@ -18,6 +21,18 @@ function range(raw: number, buffer = 0.12): { min: number; max: number } {
   return {
     min: roundPeso(raw),
     max: roundPeso(raw * (1 + buffer)),
+  };
+}
+
+function applyDiscount(fare: { min: number; max: number }, discountRate = 0.2): {
+  discountMin: number;
+  discountMax: number;
+  discountNote: string;
+} {
+  return {
+    discountMin: roundPeso(fare.min * (1 - discountRate)),
+    discountMax: roundPeso(fare.max * (1 - discountRate)),
+    discountNote: '20% student, senior, and PWD discount where applicable.',
   };
 }
 
@@ -35,12 +50,16 @@ function estimateJeepneyFare(distanceKm: number): FareEstimate {
   const extraKm = Math.max(0, distanceKm - 4);
   const traditional = 13 + extraKm * 1.8;
   const modern = 15 + extraKm * 2.2;
+  const fare = {
+    min: roundPeso(traditional),
+    max: roundPeso(modern),
+  };
   return {
     mode: 'jeepney',
     label: 'Jeepney',
     icon: '🚙',
-    min: roundPeso(traditional),
-    max: roundPeso(modern),
+    ...fare,
+    ...applyDiscount(fare),
     status: 'conditional',
     note: 'Only if a direct jeepney/modern jeepney route exists.',
   };
@@ -59,6 +78,7 @@ function estimateTricycleFare(distanceKm: number): FareEstimate {
     icon: '🛺',
     min: estimate.min,
     max: estimate.max,
+    ...applyDiscount(estimate),
     status: longTrip ? 'not_recommended' : 'conditional',
     note: longTrip
       ? 'Usually limited to local zones; may not be allowed for long or national-highway trips.'
@@ -76,6 +96,7 @@ function estimateTaxiFare(distanceKm: number, durationMin: number): FareEstimate
     icon: '🚕',
     min: estimate.min,
     max: estimate.max,
+    ...applyDiscount(estimate),
     status: 'available',
     note: 'Metered estimate; traffic and waiting time can increase final fare.',
   };
@@ -89,6 +110,9 @@ function estimateMaximOption(distanceKm: number): FareEstimate {
     icon: '🛵',
     min: estimate.min,
     max: estimate.max,
+    discountMin: estimate.min,
+    discountMax: estimate.max,
+    discountNote: 'Platform promos/discounts vary; statutory fare discount may not be automatic.',
     status: 'available',
     note: 'App-based ride estimate; final fare may change with demand and driver availability.',
   };

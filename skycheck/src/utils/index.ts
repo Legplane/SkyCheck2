@@ -1,7 +1,6 @@
 // ─────────────────────────────────────────────────────────────────
-// Maxim Fare Estimator
-// Formula: ₱49 base + ₱12/km after the first km. Range ±15%.
-// Source: Maxim Philippines published rate card (publicly available)
+// Legacy Maxim fare helper kept for older cached route responses.
+// New route screens use backend multi-transport fare estimates.
 // ─────────────────────────────────────────────────────────────────
 export function estimateMaximFare(distanceKm: number): { min: number; max: number } {
   const base = 49;

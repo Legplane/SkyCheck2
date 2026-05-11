@@ -104,18 +104,18 @@ function buildBasisText(
   const parts: string[] = [];
 
   if (weatherRisk !== 'LOW') {
-    parts.push(`Rain prob ${w.precipitationProbability}%`);
+    parts.push(`${weatherRisk} weather: rain ${w.precipitationProbability}%, heat index ${Math.round(w.feelsLike)}°C`);
   }
 
   if (trafficRisk !== 'LOW' && trafficRisk !== 'UNKNOWN' && trafficRatio !== undefined) {
     const label = trafficSource === 'tomtom' ? 'Live traffic flow' : 'Estimated traffic flow';
-    parts.push(`${label} ${Math.round(trafficRatio * 100)}%`);
+    parts.push(`${trafficRisk} traffic: ${label.toLowerCase()} ${Math.round(trafficRatio * 100)}% of free-flow speed`);
   }
 
   if (floodRisk !== 'LOW' && elevation !== undefined && elevation >= 0) {
-    parts.push(`Elevation ${elevation}m`);
+    parts.push(`${floodRisk} flood: elevation ${elevation}m with today's rain`);
   }
 
-  if (parts.length === 0) return 'Clear conditions — great day to commute!';
-  return `Based on ${parts.join(' · ')}`;
+  if (parts.length === 0) return 'Clear conditions - great day to commute.';
+  return parts.join(' • ');
 }

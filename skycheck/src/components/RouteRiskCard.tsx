@@ -5,7 +5,6 @@ import type { Route } from '../types';
 import RiskBadge from './RiskBadge';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { RISK_BG_LIGHT } from '../constants/risk';
-import { formatFare } from '../utils';
 import FareEstimateList from './FareEstimateList';
 
 // ─────────────────────────────────────────────────────────────────
@@ -83,7 +82,7 @@ export default function RouteRiskCard({ route }: RouteRiskCardProps) {
         </div>
       </div>
 
-      {/* Row 2: sub-risks + fare */}
+      {/* Row 2: sub-risks */}
       <div className="flex items-center gap-2 flex-wrap">
         {/* Weather sub-risk */}
         <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${
@@ -106,11 +105,6 @@ export default function RouteRiskCard({ route }: RouteRiskCardProps) {
           risk.flood === 'MEDIUM' ? 'bg-amber-100 text-amber-700' :
           'bg-green-100 text-green-700'
         }`}>🌊 {risk.flood}</span>
-
-        {/* Fare estimate */}
-        <span className="text-xs font-semibold text-primary-700 ml-auto">
-          🛵 {formatFare(route.maximFare)}
-        </span>
       </div>
 
       {/* Risk basis */}

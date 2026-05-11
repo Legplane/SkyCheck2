@@ -125,6 +125,9 @@ export interface FareEstimate {
   icon: string;
   min: number;
   max: number;
+  discountMin: number;
+  discountMax: number;
+  discountNote: string;
   status: 'available' | 'conditional' | 'not_recommended';
   note: string;
 }

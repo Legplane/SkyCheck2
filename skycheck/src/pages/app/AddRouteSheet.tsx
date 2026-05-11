@@ -268,6 +268,9 @@ export default function AddRouteSheet({ editRoute, onClose, onSaved }: AddRouteS
                   icon: '🛵',
                   min: preview.maximFare.min,
                   max: preview.maximFare.max,
+                  discountMin: preview.maximFare.min,
+                  discountMax: preview.maximFare.max,
+                  discountNote: 'Platform promos/discounts vary.',
                   status: 'available',
                   note: 'App-based ride estimate.',
                 }]} />

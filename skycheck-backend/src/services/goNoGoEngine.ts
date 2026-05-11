@@ -412,7 +412,7 @@ function buildRecommendation(verdict: GoNoGoVerdict, input: GoNoGoInput): string
   if (verdict === 'OWN_RISK') {
     if (input.schoolStatus === 'ONLINE') return 'Classes are online. Commuting is optional — attend from home if possible.';
     if (input.overallFeeling === 'mild') return 'You have mild symptoms. If you must go, wear a mask and rest when possible.';
-    if (input.weatherRisk === 'HIGH') return 'Severe weather ahead. If you must go, leave early, bring raincoat, and budget for Maxim.';
+    if (input.weatherRisk === 'HIGH') return 'Severe weather ahead. If you must go, leave early, bring raincoat, and budget extra fare.';
     return 'Proceed with caution. Monitor conditions and have a backup plan.';
   }
   // GO

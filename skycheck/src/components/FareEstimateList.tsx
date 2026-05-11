@@ -25,12 +25,20 @@ export default function FareEstimateList({ fares = [], compact = false }: FareEs
               {formatFare(fare)}
             </span>
           </div>
+          <div className="mt-1 flex items-center justify-between gap-2">
+            <span className="text-[10px] text-gray-400">Student/PWD/Senior</span>
+            <span className="text-[10px] font-bold text-gray-700">
+              {formatFare({ min: fare.discountMin, max: fare.discountMax })}
+            </span>
+          </div>
           <div className="mt-1.5 flex items-start justify-between gap-2">
             <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-bold ${fareStatusClass(fare.status)}`}>
               {fareStatusLabel(fare.status)}
             </span>
             {!compact && (
-              <p className="text-right text-[10px] leading-snug text-gray-500">{fare.note}</p>
+              <p className="text-right text-[10px] leading-snug text-gray-500">
+                {fare.note} {fare.discountNote}
+              </p>
             )}
           </div>
         </div>

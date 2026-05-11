@@ -733,7 +733,7 @@ export function getCommuteTips(
   if (wind >= R.WIND_HIGH) tips.push('Strong winds — careful on motorcycles');
   else if (wind >= R.WIND_MED) tips.push('Breezy — secure loose items');
 
-  if (trafficRisk === 'HIGH')        tips.push('Heavy traffic — budget extra time and ₱200 for Maxim');
+  if (trafficRisk === 'HIGH')        tips.push('Heavy traffic — budget extra time and compare transport fares');
   else if (trafficRisk === 'MEDIUM') tips.push('Moderate traffic — allow a few extra minutes');
   else if (trafficRisk === 'LOW' && tips.length === 0) tips.push('Light traffic — smooth commute expected');
 

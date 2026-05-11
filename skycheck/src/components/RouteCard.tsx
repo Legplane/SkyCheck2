@@ -5,7 +5,7 @@ import { fetchWeather } from '../api';
 import RiskBadge from './RiskBadge';
 import SubRiskRow from './SubRiskRow';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
-import { formatFare, formatDistance, formatDuration } from '../utils';
+import { formatDistance, formatDuration } from '../utils';
 import FareEstimateList from './FareEstimateList';
 
 interface RouteCardProps {
@@ -90,15 +90,11 @@ export default function RouteCard({ route, onEdit, onDelete }: RouteCardProps) {
         <p className="text-[10px] text-gray-500 leading-relaxed">{displayRisk.basis}</p>
       )}
 
-      {/* Route stats + fare */}
+      {/* Route stats */}
       <div className="flex items-center gap-3 pt-1 border-t border-gray-50">
         <span className="text-xs text-gray-500">{formatDistance(route.distanceKm)}</span>
         <span className="text-gray-200">·</span>
         <span className="text-xs text-gray-500">{formatDuration(route.durationMin)}</span>
-        <span className="text-gray-200">·</span>
-        <span className="text-xs font-semibold text-primary-600">
-          🛵 {formatFare(route.maximFare)}
-        </span>
       </div>
       {route.fareEstimates && route.fareEstimates.length > 0 && (
         <FareEstimateList fares={route.fareEstimates} compact />
