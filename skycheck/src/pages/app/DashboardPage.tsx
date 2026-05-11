@@ -4,7 +4,7 @@ import { RefreshCw, MapPin, Bell, Menu, Navigation, AlertTriangle, ShieldCheck, 
 import { Link } from 'react-router-dom';
 import { fetchWeather } from '../../api';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
-import { FALLBACK_LOCATION, useGeoStore, selectIsLive, selectIsReady } from '../../store/geoStore';
+import { useGeoStore, selectIsLive, selectIsReady } from '../../store/geoStore';
 import OfflineBanner from '../../components/OfflineBanner';
 import RiskBadge from '../../components/RiskBadge';
 import SubRiskRow from '../../components/SubRiskRow';
@@ -15,7 +15,7 @@ import { RISK_BG_LIGHT, RISK_TEXT_COLORS } from '../../constants/risk';
 import { formatUpdatedAt } from '../../utils';
 import { commuteRiskHeadline } from '../../utils/riskMessages';
 
-const TRUSTED_GPS_ACCURACY_M = 500;
+const CITY_WEATHER_LABEL = 'Olongapo';
 
 function haversineM(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6_371_000;
@@ -46,8 +46,7 @@ export default function DashboardPage() {
   const [lastManualRefreshAt, setLastManualRefreshAt] = useState<string | null>(null);
   const refreshInFlightRef = useRef(false);
   const gpsTapRef = useRef(0);
-  const hasTrustedLiveLocation = isLive && accuracy > 0 && accuracy <= TRUSTED_GPS_ACCURACY_M;
-  const canFetchWeather = isOnline && isReady && (status !== 'granted' || hasTrustedLiveLocation);
+  const canFetchWeather = isOnline && isReady;
 
   const prevCoordsRef = useRef<{ lat: number; lon: number } | null>(null);
 
@@ -101,10 +100,6 @@ export default function DashboardPage() {
     try {
       await refreshLocation();
       const { lat: la, lon: lo } = useGeoStore.getState();
-      const { status: nextStatus, accuracy: nextAccuracy } = useGeoStore.getState();
-      if (nextStatus === 'granted' && nextAccuracy > TRUSTED_GPS_ACCURACY_M) {
-        return;
-      }
       await qc.invalidateQueries({ queryKey: ['weather', la, lo], exact: true });
       await qc.fetchQuery({
         queryKey: ['weather', la, lo],
@@ -166,8 +161,8 @@ export default function DashboardPage() {
         <div className="flex flex-col items-center justify-center flex-1 gap-4 px-8 text-center">
           <span className="text-5xl">🌐</span>
           <p className="text-gray-600 text-sm max-w-xs leading-relaxed">
-            {isLive && accuracy > TRUSTED_GPS_ACCURACY_M
-              ? 'Your browser only gave a rough location. Try refresh again, move near a window, or use phone GPS.'
+            {isLive && accuracy > 0
+              ? 'Your browser gave a rough location, but city-level weather can still load.'
               : 'Unable to load weather. Check your connection.'}
           </p>
           <button onClick={() => refreshWeatherAndLocation()}
@@ -180,9 +175,7 @@ export default function DashboardPage() {
   }
 
   const { current, hourly, risk, commuteTips, location } = data;
-  const displayLocation = status === 'denied' || status === 'unavailable'
-    ? FALLBACK_LOCATION.displayName
-    : location;
+  const displayLocation = location || CITY_WEATHER_LABEL;
 
   const updatedLabel = formatUpdatedAt(
     lastManualRefreshAt
@@ -201,23 +194,17 @@ export default function DashboardPage() {
         <div className="px-4 pt-4 flex items-center justify-between">
           <div className="min-w-0 flex-1 mr-2">
             <div className="flex items-start gap-1.5 min-w-0">
-              <MapPin size={13} className={`shrink-0 mt-0.5 ${!hasTrustedLiveLocation ? 'text-amber-500' : 'text-primary-600'}`} />
+              <MapPin size={13} className="shrink-0 mt-0.5 text-primary-600" />
               <span className="text-sm font-medium text-gray-700 leading-snug break-words min-w-0">
                 {displayLocation}, PH
               </span>
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-1.5">
-              {hasTrustedLiveLocation ? (
-                <span className="shrink-0 text-[11px] text-green-600 bg-green-50 px-1.5 py-0.5 rounded-full font-medium inline-flex items-center gap-0.5">
-                  <Navigation size={9} /> Live +/-{accuracy}m
-                </span>
-              ) : (
-                <span className="shrink-0 text-[11px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded-full font-medium">
-                  {isLive && accuracy ? `Imprecise +/-${accuracy}m` : 'Estimated'}
-                </span>
-              )}
-              {isLive && accuracy > TRUSTED_GPS_ACCURACY_M && (
-                <span className="text-[11px] text-gray-400">Use phone GPS or refresh outdoors</span>
+              <span className="shrink-0 text-[11px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full font-medium inline-flex items-center gap-0.5">
+                <Navigation size={9} /> City-level forecast
+              </span>
+              {isLive && accuracy > 0 && (
+                <span className="text-[11px] text-gray-400">GPS used only to identify city area</span>
               )}
             </div>
           </div>
@@ -334,7 +321,7 @@ function LocationBanner({ reason, onRetry }: { reason: string; onRetry: () => vo
     <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 flex items-start gap-2">
       <AlertTriangle size={14} className="text-amber-600 shrink-0" />
       <span className="text-xs text-amber-800 flex-1 min-w-0 leading-snug break-words">
-        {reason || 'Precise location unavailable'} Showing {FALLBACK_LOCATION.displayName} weather instead. For accurate tracking, use the mobile version.
+        {reason || 'Location unavailable'} Showing city-level Olongapo weather.
       </span>
       <button
         type="button"

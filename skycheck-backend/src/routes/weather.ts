@@ -6,6 +6,11 @@ import { getCommuteTips } from '../services/weatherService';
 import { maybeCreateCurrentWeatherAlert } from '../services/weatherAlertService';
 
 const router = Router();
+const OLONGAPO_CITY_CENTER = {
+  lat: 14.8386,
+  lon: 120.2842,
+  label: 'Olongapo',
+};
 
 // ─────────────────────────────────────────────────────────────────
 // GET /weather?lat=&lon=
@@ -29,13 +34,13 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
       return;
     }
 
-    // Weather bundle + reverse-geocode run in parallel (same GPS coords)
+    // Weather and risk are city-level for stable provider matching.
     const [{ current, hourly, providerPlaceName }, nominatim] = await Promise.all([
       fetchWeatherData(lat, lon),
-      resolvePhLocation(lat, lon),
+      resolvePhLocation(OLONGAPO_CITY_CENTER.lat, OLONGAPO_CITY_CENTER.lon),
     ]);
 
-    const risk = await evaluateCombinedRisk(lat, lon, current);
+    const risk = await evaluateCombinedRisk(OLONGAPO_CITY_CENTER.lat, OLONGAPO_CITY_CENTER.lon, current);
     const commuteTips = getCommuteTips(risk.weather, risk.traffic, risk.flood, current);
 
     const location = pickDisplayLocation({
@@ -56,7 +61,15 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
       }
     }
 
-    res.json({ location, lat, lon, current, hourly, risk, commuteTips });
+    res.json({
+      location,
+      lat: OLONGAPO_CITY_CENTER.lat,
+      lon: OLONGAPO_CITY_CENTER.lon,
+      current,
+      hourly,
+      risk,
+      commuteTips,
+    });
   } catch (err) {
     console.error('[Weather] Error:', err);
     res.status(503).json({ error: 'Weather data temporarily unavailable. Please try again.' });
@@ -94,7 +107,7 @@ function pickDisplayLocation(input: {
 
 async function resolvePhLocation(lat: number, lon: number): Promise<string> {
   try {
-    const zoom = '16'; // barangay / suburb level when available
+    const zoom = '10'; // city / municipality level
     const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lon}&format=json&zoom=${zoom}&addressdetails=1`;
     const res  = await fetch(url, {
       headers: { 'User-Agent': 'SkyCheck-StudentApp/1.0 (gordoncollege.edu.ph)' },
@@ -107,52 +120,15 @@ async function resolvePhLocation(lat: number, lon: number): Promise<string> {
       address?: {
         city?:           string;
         municipality?: string;
-        city_district?: string;
-        neighbourhood?: string;
-        neighborhood?: string;
-        quarter?:       string;
-        residential?:   string;
         county?:       string;
         state?:        string;
         town?:         string;
         village?:      string;
-        suburb?:       string;
-        locality?:     string;
-        hamlet?:       string;
-        district?:     string;
-        road?:         string;
-        pedestrian?:   string;
-        footway?:      string;
       };
     };
 
     const a = data.address;
-    if (!a) return 'Your Area';
-
-    // Return one clean label only. Prefer road/street names such as
-    // Tabacuhan Street over subdivision/locality labels when available.
-    const street =
-      a.road ||
-      a.pedestrian ||
-      a.footway;
-
-    const locality =
-      a.suburb         ||
-      a.village        ||
-      a.locality       ||
-      a.hamlet         ||
-      a.neighbourhood  ||
-      a.neighborhood   ||
-      a.quarter        ||
-      a.residential    ||
-      a.city_district  ||
-      a.district       ||
-      a.town           ||
-      a.municipality   ||
-      a.city           ||
-      a.county         ||
-      a.state          ||
-      'Your Area';
+    if (!a) return OLONGAPO_CITY_CENTER.label;
 
     const city =
       a.city ||
@@ -160,9 +136,9 @@ async function resolvePhLocation(lat: number, lon: number): Promise<string> {
       a.town ||
       a.county;
 
-    return firstPlaceName([street, locality, city, a.state]) || 'Your Area';
+    return firstPlaceName([city, a.state]) || OLONGAPO_CITY_CENTER.label;
   } catch {
-    return 'Your Area';
+    return OLONGAPO_CITY_CENTER.label;
   }
 }
 

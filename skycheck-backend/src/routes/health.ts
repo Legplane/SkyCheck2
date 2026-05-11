@@ -8,6 +8,10 @@ import { manilaCheckDate } from '../utils/manilaDate';
 
 const router = Router();
 const prisma  = new PrismaClient();
+const OLONGAPO_CITY_CENTER = {
+  lat: 14.8386,
+  lon: 120.2842,
+};
 
 // ── POST /health/check — submit today's health assessment ─────────
 router.post('/check', requireAuth, async (req: Request, res: Response) => {
@@ -98,9 +102,9 @@ router.post('/evaluate', requireAuth, async (req: Request, res: Response) => {
       return;
     }
 
-    // 2. Weather + risk at user location
+    // 2. Weather + default risk at city level for stable provider matching
     const { current } = await fetchWeatherData(lat, lon);
-    const risk = await evaluateCombinedRisk(lat, lon, current);
+    const risk = await evaluateCombinedRisk(OLONGAPO_CITY_CENTER.lat, OLONGAPO_CITY_CENTER.lon, current);
 
     // 3. Route-specific risk (if routeId provided)
     let routeRisk = risk;

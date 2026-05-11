@@ -46,15 +46,12 @@ const STATUS_DOT: Record<GoNoGoFactor['status'], string> = {
 };
 
 const CURRENT_LOCATION_BASIS = 'current-location';
-const GO_NO_GO_ROUTE_BASIS_KEY = 'skycheck-go-no-go-route-basis';
 
 export default function GoNoGoPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const isOnline = useOnlineStatus();
-  const [selectedRouteId, setSelectedRouteId] = useState(() => (
-    localStorage.getItem(GO_NO_GO_ROUTE_BASIS_KEY) ?? ''
-  ));
+  const [selectedRouteId, setSelectedRouteId] = useState(CURRENT_LOCATION_BASIS);
   // Use global GPS store — no per-page GPS restart
   const lat      = useGeoStore((s) => s.lat);
   const lon      = useGeoStore((s) => s.lon);
@@ -91,22 +88,19 @@ export default function GoNoGoPage() {
     if (!routesFetched) return;
 
     if (selectedRouteId === CURRENT_LOCATION_BASIS) {
-      localStorage.setItem(GO_NO_GO_ROUTE_BASIS_KEY, CURRENT_LOCATION_BASIS);
       return;
     }
 
     const savedRouteStillExists = routes.some((route) => route.id === selectedRouteId);
-    const nextRouteId = savedRouteStillExists ? selectedRouteId : routes[0]?.id ?? CURRENT_LOCATION_BASIS;
+    const nextRouteId = savedRouteStillExists ? selectedRouteId : CURRENT_LOCATION_BASIS;
 
     if (nextRouteId !== selectedRouteId) {
       setSelectedRouteId(nextRouteId);
     }
-    localStorage.setItem(GO_NO_GO_ROUTE_BASIS_KEY, nextRouteId);
   }, [routes, routesFetched, selectedRouteId]);
 
   const chooseRouteBasis = (routeId: string) => {
     setSelectedRouteId(routeId);
-    localStorage.setItem(GO_NO_GO_ROUTE_BASIS_KEY, routeId);
   };
 
   const { data: liveResult, isLoading, isFetching, refetch, error } = useQuery({
@@ -261,7 +255,7 @@ export default function GoNoGoPage() {
                 <span className="break-words">Commute Basis</span>
               </h3>
               <span className="text-[11px] font-semibold text-primary-700 bg-primary-50 px-2 py-1 rounded-full shrink-0">
-                {selectedRoute ? 'Route TomTom' : 'GPS point'}
+                {selectedRoute ? 'Route TomTom' : 'City-level'}
               </span>
             </div>
             <div className="grid gap-2 sm:grid-cols-2">
@@ -277,7 +271,7 @@ export default function GoNoGoPage() {
               >
                 <p className="text-sm font-bold text-gray-900 break-words">Current location</p>
                 <p className="text-[11px] text-gray-500 leading-relaxed break-words">
-                  Uses your GPS point. If the point is not on a mapped road, SkyCheck may use the time-based backup.
+                  Uses city-level Olongapo traffic and weather by default.
                 </p>
               </button>
               {routes.map((route) => {

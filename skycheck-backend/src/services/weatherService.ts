@@ -435,33 +435,6 @@ function buildAccuWeatherOnlyForecast(
   return { current, hourly };
 }
 
-function applyCityRainForecast(
-  local: { current: CurrentWeather; hourly: HourlyForecast[] },
-  cityRain: { current: CurrentWeather; hourly: HourlyForecast[] },
-): { current: CurrentWeather; hourly: HourlyForecast[] } {
-  const current: CurrentWeather = {
-    ...local.current,
-    precipitationProbability: cityRain.current.precipitationProbability,
-    precipitation:            cityRain.current.precipitation,
-    weatherCode:              cityRain.current.weatherCode,
-    weatherLabel:             cityRain.current.weatherLabel,
-    weatherIcon:              cityRain.current.weatherIcon,
-  };
-
-  const hourly = local.hourly.map((localHour) => {
-    const cityHour = cityRain.hourly.find((h) => h.time === localHour.time);
-    if (!cityHour) return localHour;
-    return {
-      ...localHour,
-      weatherCode: cityHour.weatherCode,
-      weatherIcon: cityHour.weatherIcon,
-      precipitationProbability: cityHour.precipitationProbability,
-    };
-  });
-
-  return { current, hourly };
-}
-
 async function fetchAccuWeatherForecast(lat: number, lon: number, apiKey: string): Promise<{
   current: CurrentWeather;
   hourly: HourlyForecast[];
@@ -628,7 +601,9 @@ export async function fetchWeatherData(lat: number, lon: number): Promise<{
   weatherRisk: RiskLevel;
   providerPlaceName?: string;
 }> {
-  const cached = getCachedWeather(lat, lon);
+  const cityLat = OLONGAPO_CITY_CENTER.lat;
+  const cityLon = OLONGAPO_CITY_CENTER.lon;
+  const cached = getCachedWeather(cityLat, cityLon);
   if (cached) {
     return {
       current:              cached.current,
@@ -639,103 +614,40 @@ export async function fetchWeatherData(lat: number, lon: number): Promise<{
   }
 
   const awKey = process.env.ACCUWEATHER_API_KEY?.trim();
-  let om: Awaited<ReturnType<typeof fetchOpenMeteoForecast>> | null = null;
-  let openMeteoError: unknown;
-
-  try {
-    om = await fetchOpenMeteoForecast(lat, lon);
-  } catch (err) {
-    openMeteoError = err;
-    const status = axios.isAxiosError(err) ? err.response?.status : null;
-    const code = axios.isAxiosError(err) ? err.code : null;
-    if (status === 429) console.warn('[Weather] Open-Meteo daily/rate limit reached - trying AccuWeather fallback');
-    else if (code === 'ECONNABORTED') console.warn('[Weather] Open-Meteo timed out - trying AccuWeather fallback');
-    else console.warn('[Weather] Open-Meteo unavailable - trying AccuWeather fallback');
-  }
-
-  if (!om && awKey) {
-    console.info('[Weather] Using AccuWeather as primary fallback because Open-Meteo did not respond');
-    const awOnly = await fetchAccuWeatherForecast(OLONGAPO_CITY_CENTER.lat, OLONGAPO_CITY_CENTER.lon, awKey);
+  if (awKey) {
+    const awOnly = await fetchAccuWeatherForecast(cityLat, cityLon, awKey);
     if (awOnly) {
       const payload: WeatherCachePayload = {
         current: awOnly.current,
         hourly: awOnly.hourly,
         weatherRisk: evaluateWeatherRisk(awOnly.current),
-        ...(awOnly.providerPlaceName ? { providerPlaceName: awOnly.providerPlaceName } : {}),
+        providerPlaceName: awOnly.providerPlaceName || OLONGAPO_CITY_CENTER.name,
       };
-      setCachedWeather(lat, lon, payload);
+      setCachedWeather(cityLat, cityLon, payload);
       return payload;
     }
   }
 
-  if (!om) throw openMeteoError;
-
-  let rainBase = om;
+  let om: Awaited<ReturnType<typeof fetchOpenMeteoForecast>>;
   try {
-    rainBase = await fetchOpenMeteoForecast(OLONGAPO_CITY_CENTER.lat, OLONGAPO_CITY_CENTER.lon);
-  } catch {
-    rainBase = om;
+    om = await fetchOpenMeteoForecast(cityLat, cityLon);
+  } catch (err) {
+    const status = axios.isAxiosError(err) ? err.response?.status : null;
+    const code = axios.isAxiosError(err) ? err.code : null;
+    if (status === 429) console.warn('[Weather] Open-Meteo daily/rate limit reached and AccuWeather fallback is unavailable');
+    else if (code === 'ECONNABORTED') console.warn('[Weather] Open-Meteo timed out and AccuWeather fallback is unavailable');
+    else console.warn('[Weather] Open-Meteo unavailable and AccuWeather fallback is unavailable');
+    throw err;
   }
-
-  if (!awKey) {
-    const cityRain = applyCityRainForecast(om, rainBase);
-    const payload: WeatherCachePayload = {
-      current: cityRain.current,
-      hourly: cityRain.hourly,
-      weatherRisk: evaluateWeatherRisk(cityRain.current),
-    };
-    setCachedWeather(lat, lon, payload);
-    return payload;
-  }
-
-  const awGeo = await accuWeatherGeoposition(OLONGAPO_CITY_CENTER.lat, OLONGAPO_CITY_CENTER.lon, awKey);
-  if (!awGeo?.locationKey) {
-    const cityRain = applyCityRainForecast(om, rainBase);
-    const payload: WeatherCachePayload = {
-      current: cityRain.current,
-      hourly: cityRain.hourly,
-      weatherRisk: evaluateWeatherRisk(cityRain.current),
-    };
-    setCachedWeather(lat, lon, payload);
-    return payload;
-  }
-
-  const [awCur, awHr] = await Promise.all([
-    accuWeatherCurrent(awGeo.locationKey, awKey),
-    accuWeatherHourly24(awGeo.locationKey, awKey),
-  ]);
-
-  let mergedCurrent = om.current;
-  let mergedHourly = om.hourly;
-
-  if (awCur && awHr.length > 0) {
-    const cityRain = mergeAccuWeatherReadings(rainBase, awCur, awHr);
-    const merged = applyCityRainForecast(om, cityRain);
-    mergedCurrent = merged.current;
-    mergedHourly = merged.hourly;
-  } else if (awCur) {
-    const cityCurrentRain = mergeAccuWeatherCurrentOnly(rainBase.current, awCur);
-    const merged = applyCityRainForecast(om, { current: cityCurrentRain, hourly: rainBase.hourly });
-    mergedCurrent = merged.current;
-    mergedHourly = merged.hourly;
-  } else {
-    const merged = applyCityRainForecast(om, rainBase);
-    mergedCurrent = merged.current;
-    mergedHourly = merged.hourly;
-  }
-
-  const placeSanitized = awGeo.placeName
-    ? awGeo.placeName.replace(/^City of /i, '').replace(/^Municipality of /i, '').trim()
-    : '';
 
   const payload: WeatherCachePayload = {
-    current: mergedCurrent,
-    hourly: mergedHourly,
-    weatherRisk: evaluateWeatherRisk(mergedCurrent),
-    ...(placeSanitized ? { providerPlaceName: placeSanitized } : {}),
+    current: om.current,
+    hourly: om.hourly,
+    weatherRisk: evaluateWeatherRisk(om.current),
+    providerPlaceName: OLONGAPO_CITY_CENTER.name,
   };
 
-  setCachedWeather(lat, lon, payload);
+  setCachedWeather(cityLat, cityLon, payload);
   return payload;
 }
 
