@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { Clock, MapPin, RefreshCw } from 'lucide-react';
-import { fetchWeather } from '../api';
+import { getRouteRisk } from '../api';
 import type { Route } from '../types';
 import RiskBadge from './RiskBadge';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
@@ -24,11 +24,10 @@ interface RouteRiskCardProps {
 export default function RouteRiskCard({ route }: RouteRiskCardProps) {
   const isOnline = useOnlineStatus();
 
-  // Fetch weather at the route's START location
-  const { data, isLoading, isFetching, refetch } = useQuery({
-    queryKey: ['route-weather', route.id, route.startLat, route.startLon],
-    queryFn: () => fetchWeather(route.startLat, route.startLon),
-    staleTime: 15 * 60 * 1000,
+  const { data: liveRisk, isLoading, isFetching, refetch } = useQuery({
+    queryKey: ['route-risk', route.id],
+    queryFn: () => getRouteRisk(route.id),
+    staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
     retry: isOnline ? 1 : 0,
     enabled: isOnline,
@@ -37,10 +36,7 @@ export default function RouteRiskCard({ route }: RouteRiskCardProps) {
   const routeName = route.label ??
     `${route.startAddress.split(',')[0].trim()} → ${route.destAddress.split(',')[0].trim()}`;
 
-  // Use live-fetched risk if available, fall back to cached cron risk
-  const risk = data?.risk ?? route.risk;
-  const weatherIcon = data?.current.weatherIcon ?? '🌡️';
-  const temperature = data?.current.temperature ?? null;
+  const risk = liveRisk ?? route.risk;
 
   return (
     <div className={`rounded-2xl p-3.5 ${RISK_BG_LIGHT[risk.overall]} transition-all`}>
@@ -48,7 +44,7 @@ export default function RouteRiskCard({ route }: RouteRiskCardProps) {
       <div className="flex items-start justify-between gap-2 mb-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
-            <span className="text-base">{weatherIcon}</span>
+            <span className="text-base">🌡️</span>
             <p className="min-w-0 text-sm font-bold text-gray-900 leading-snug break-words">{routeName}</p>
           </div>
           <div className="flex items-center gap-3 mt-0.5 flex-wrap">
@@ -60,9 +56,6 @@ export default function RouteRiskCard({ route }: RouteRiskCardProps) {
               <MapPin size={10} className="text-gray-400" />
               <span className="min-w-0 break-words text-xs text-gray-500">{route.startAddress.split(',')[0]}</span>
             </div>
-            {temperature !== null && (
-              <span className="text-xs font-semibold text-gray-700">{Math.round(temperature)}°C</span>
-            )}
           </div>
         </div>
 

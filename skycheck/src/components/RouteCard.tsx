@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Pencil, Trash2, MapPin, Clock, Navigation } from 'lucide-react';
 import type { Route } from '../types';
-import { fetchWeather } from '../api';
+import { getRouteRisk } from '../api';
 import RiskBadge from './RiskBadge';
 import SubRiskRow from './SubRiskRow';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
@@ -18,23 +18,16 @@ interface RouteCardProps {
 
 export default function RouteCard({ route, onEdit, onDelete }: RouteCardProps) {
   const isOnline = useOnlineStatus();
-  const hasUnknownRisk = [
-    route.risk.overall,
-    route.risk.weather,
-    route.risk.traffic,
-    route.risk.flood,
-  ].includes('UNKNOWN');
-
-  const { data: liveWeather, isFetching: isRefreshingRisk } = useQuery({
-    queryKey: ['route-card-live-risk', route.id, route.startLat, route.startLon],
-    queryFn: () => fetchWeather(route.startLat, route.startLon),
-    enabled: isOnline && hasUnknownRisk,
-    staleTime: 15 * 60 * 1000,
+  const { data: liveRisk, isFetching: isRefreshingRisk } = useQuery({
+    queryKey: ['route-card-live-risk', route.id],
+    queryFn: () => getRouteRisk(route.id),
+    enabled: isOnline,
+    staleTime: 5 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
     retry: 1,
   });
 
-  const displayRisk = liveWeather?.risk ?? route.risk;
+  const displayRisk = liveRisk ?? route.risk;
 
   return (
     <div className="bg-white rounded-2xl p-4 shadow-card space-y-3 animate-fadeIn">

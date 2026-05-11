@@ -16,6 +16,7 @@ import healthRoutes       from './routes/health';
 import announcementRoutes from './routes/announcements';
 import { startRiskCron, startMorningAlertCron } from './services/cronService';
 import { clearStaleBasis } from './utils/clearStaleBasis';
+import { getTomTomStatus } from './services/trafficService';
 
 const REQUIRED_ENV = ['DATABASE_URL', 'JWT_SECRET'];
 const missing = REQUIRED_ENV.filter(k => !process.env[k]);
@@ -66,7 +67,12 @@ app.use(rateLimit({
 }));
 
 app.get('/health-check-server', (_req, res) => res.json({
-  status: 'ok', version: '2.0.0', timestamp: new Date().toISOString(),
+  status: 'ok',
+  version: '2.0.0',
+  timestamp: new Date().toISOString(),
+  traffic: {
+    tomtom: getTomTomStatus(),
+  },
 }));
 
 // Legacy health endpoint alias

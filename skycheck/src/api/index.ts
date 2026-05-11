@@ -2,7 +2,7 @@ import { apiClient } from './client';
 import type {
   WeatherSnapshot, Route, CreateRoutePayload, RoutePreview,
   Alert, AlertGroup, HealthCheckPayload, HealthCheck,
-  GoNoGoResult, AnnouncementsResponse,
+  GoNoGoResult, AnnouncementsResponse, CombinedRisk,
 } from '../types';
 
 // ── Weather ───────────────────────────────────────────────────────
@@ -35,6 +35,11 @@ export async function previewRoute(payload: {
   startLat: number; startLon: number; destLat: number; destLon: number;
 }): Promise<RoutePreview> {
   const { data } = await apiClient.post<RoutePreview>('/routes/preview', payload);
+  return data;
+}
+
+export async function getRouteRisk(id: string): Promise<CombinedRisk> {
+  const { data } = await apiClient.get<CombinedRisk>(`/routes/${id}/risk`);
   return data;
 }
 

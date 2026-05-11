@@ -4,6 +4,7 @@ import { RISK } from '../constants/risk';
 
 const TOMTOM_BASE = 'https://api.tomtom.com/traffic/services/4/flowSegmentData/relative0/10/json';
 const TRAFFIC_TTL_MS = 10 * 60 * 1000;
+const TOMTOM_TIMEOUT_MS = 5500;
 const trafficCache = new Map<string, { cachedAt: number; result: TrafficResult }>();
 const routeTrafficCache = new Map<string, { cachedAt: number; result: TrafficResult }>();
 
@@ -39,15 +40,16 @@ export async function fetchRouteTrafficLevel(
 
   const midLat = (startLat + destLat) / 2;
   const midLon = (startLon + destLon) / 2;
-  const live: TrafficResult[] = [];
-  for (const sample of [
-    { lat: startLat, lon: startLon, label: 'route start' },
-    { lat: midLat, lon: midLon, label: 'route middle' },
-    { lat: destLat, lon: destLon, label: 'route destination' },
-  ]) {
-    const result = await fetchTomTomPoint(sample.lat, sample.lon, sample.label);
-    if (result) live.push(result);
-  }
+  const samples = await Promise.allSettled([
+    fetchTomTomPoint(startLat, startLon, 'route start'),
+    fetchTomTomPoint(midLat, midLon, 'route middle'),
+    fetchTomTomPoint(destLat, destLon, 'route destination'),
+  ]);
+
+  const live = samples
+    .filter((sample): sample is PromiseFulfilledResult<TrafficResult | null> => sample.status === 'fulfilled')
+    .map(sample => sample.value)
+    .filter((sample): sample is TrafficResult => Boolean(sample));
 
   if (live.length > 0) {
     const worst = live.reduce((slowest, sample) =>
@@ -86,7 +88,7 @@ async function fetchTomTomPoint(lat: number, lon: number, label: string): Promis
   try {
     const { data } = await axios.get<TomTomFlowResponse>(TOMTOM_BASE, {
       params: { key: TOMTOM_KEY, point: `${lat},${lon}` },
-      timeout: 8000,
+      timeout: TOMTOM_TIMEOUT_MS,
     });
 
     const { currentSpeed, freeFlowSpeed, confidence, roadClosure } = data.flowSegmentData;
@@ -107,9 +109,28 @@ async function fetchTomTomPoint(lat: number, lon: number, label: string): Promis
     const status = axios.isAxiosError(err) ? err.response?.status : null;
     if (status === 429) console.warn('[Traffic] TomTom daily limit exceeded - using time-based fallback');
     else if (status === 401 || status === 403) console.warn('[Traffic] TomTom key rejected - using time-based fallback');
-    else if (status !== 404) console.warn('[Traffic] TomTom unavailable - using time-based fallback');
+    else if (status !== 404) {
+      const code = axios.isAxiosError(err) ? err.code : undefined;
+      console.warn(`[Traffic] TomTom unavailable (${status ?? code ?? 'network'}) - using time-based fallback`);
+    }
     return null;
   }
+}
+
+export function getTomTomStatus(): {
+  configured: boolean;
+  placeholder: boolean;
+  keyLength: number;
+  timeoutMs: number;
+} {
+  const raw = process.env.TOMTOM_API_KEY?.trim() ?? '';
+  const placeholder = raw === 'your_tomtom_api_key_here';
+  return {
+    configured: Boolean(raw) && !placeholder,
+    placeholder,
+    keyLength: raw.length,
+    timeoutMs: TOMTOM_TIMEOUT_MS,
+  };
 }
 
 function cleanTomTomKey(value: string | undefined): string | null {

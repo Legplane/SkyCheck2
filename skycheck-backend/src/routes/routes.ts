@@ -226,6 +226,29 @@ router.post('/preview', requireAuth, async (req: Request, res: Response) => {
   }
 });
 
+// ── GET /routes/:id/risk ──────────────────────────────────────────
+// Force-refresh full route risk so route cards can show live TomTom
+// traffic without waiting for cached rows or the 15-minute cron.
+router.get('/:id/risk', requireAuth, async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const route = await prisma.route.findUnique({ where: { id } });
+    if (!route) { res.status(404).json({ error: 'Route not found.' }); return; }
+    if (route.userId !== req.userId) { res.status(403).json({ error: 'Forbidden.' }); return; }
+
+    const risk = await evalRouteRisk(route.startLat, route.startLon, route.destLat, route.destLon);
+    await prisma.route.update({
+      where: { id },
+      data: mapRiskToRouteUpdate(risk),
+    });
+
+    res.json(risk);
+  } catch (err) {
+    console.error('[Routes] Live risk error:', err);
+    res.status(503).json({ error: 'Route risk temporarily unavailable.' });
+  }
+});
+
 // ── POST /routes ──────────────────────────────────────────────────
 router.post('/', requireAuth, async (req: Request, res: Response) => {
   try {
