@@ -220,9 +220,10 @@ SkyCheck uses TomTom Traffic Flow API when available.
 TomTom behavior:
 
 - Dashboard traffic uses the user's current GPS coordinates.
-- Saved route traffic uses the route's starting coordinates.
+- Saved route traffic samples the route's start, middle, and destination points.
 - TomTom returns current road speed and free-flow speed.
-- The backend converts that into a congestion ratio.
+- The backend converts those samples into a congestion ratio and low/moderate/high traffic volume level.
+- For saved routes, the worst TomTom segment is used so the app does not hide a congested middle or destination area.
 
 If TomTom is unavailable, missing, or rate-limited, SkyCheck uses a Philippine rush-hour heuristic.
 
@@ -235,6 +236,12 @@ The fallback estimates traffic based on:
 - Local commute patterns
 
 This means traffic does not become useless when the traffic API fails.
+
+The UI shows the traffic source:
+
+- `TomTom` when live road flow is available
+- `time based` when the fallback heuristic is used
+- `cached` when only stored route risk is available
 
 ## 11. Flood Risk System
 
@@ -277,6 +284,7 @@ Route risk includes:
 - Overall risk
 - Risk basis explanation
 - Combined risk headline explaining the main cause and secondary risks
+- Traffic volume level showing low, moderate, or high route traffic
 
 Saved routes are refreshed by the backend and cached on the frontend. Offline mode can show the last cached saved routes, but adding, editing, and deleting routes require internet.
 
@@ -317,6 +325,7 @@ Inputs:
 - Weather risk
 - Flood risk
 - Traffic risk
+- Selected route risk, if the user chooses a saved route
 - Heat index
 - Rain probability
 - Wind speed
@@ -344,6 +353,7 @@ Example logic:
 - High weather risk can produce `OWN_RISK`.
 - Combined severe weather and flood risk can produce `DO_NOT_GO`.
 - Online or suspended class status can affect the final decision.
+- If a saved route is selected, Go / No-Go uses fresh route-aware weather, flood, and TomTom traffic when possible; otherwise it falls back to cached route risk.
 
 ## 14. Health Check
 

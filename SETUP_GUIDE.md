@@ -166,7 +166,7 @@ You need **4 external service keys** plus **Firebase project configuration**. Al
 3. Click **Create API Key** → copy the key
 4. Paste into `skycheck-backend/.env` as `TOMTOM_API_KEY`
 
-> **Why TomTom?** No credit card required — ever. 2,500 free requests/day with a graceful rush-hour heuristic fallback when the limit is reached. Works for Olongapo, Subic, and all major PH corridors.
+> **Why TomTom?** No credit card required — ever. 2,500 free requests/day with a graceful rush-hour heuristic fallback when the limit is reached. Works for Olongapo, Subic, and major PH corridors. SkyCheck uses TomTom first, then falls back to the time-based estimate only when TomTom is unavailable, times out, or reaches its limit.
 
 ### Key 4 — MapTiler (Optional but recommended for maps)
 
@@ -678,6 +678,13 @@ To fix:
 2. Check the backend terminal for `[Traffic] TomTom error:` messages
 3. Confirm your TomTom key has **Traffic Flow API** enabled in the TomTom developer dashboard
 
+Expected traffic behavior:
+
+- Dashboard checks TomTom near the user's current/fallback location.
+- Saved routes check TomTom at the route start, middle, and destination.
+- Route cards show `Low volume`, `Moderate volume`, or `High volume`.
+- If TomTom times out or reaches quota, the badge shows the time-based fallback source.
+
 ### ❌ CORS error in browser console — "blocked by CORS policy"
 
 The frontend origin isn't in the backend's allowed list.
@@ -880,10 +887,16 @@ When a route has both a start and destination, SkyCheck:
 1. Fetches Open-Meteo weather at **both coordinates** in parallel
 2. Evaluates weather risk at each endpoint, takes the **worst**
 3. Evaluates flood risk at **both elevations** (Open-Topo-Data), takes the **lowest elevation** (highest flood danger)
-4. Evaluates traffic at the **start point** (representative of departure conditions)
+4. Evaluates TomTom traffic at the **start, middle, and destination** points, then uses the worst congestion sample
 5. Overall risk = `max(weather, traffic, flood)` across both endpoints
 
 This means a route from elevated Olongapo to flood-prone Pampanga lowlands correctly shows HIGH flood risk even if the start point is safe.
+
+For Go / No-Go:
+
+- If no route is selected, the decision uses the user's current location risk.
+- If a route is selected, the decision uses route-aware risk when live evaluation succeeds.
+- If live route evaluation fails, the decision falls back to the cached route risk instead of failing completely.
 
 ### Combined risk message examples
 

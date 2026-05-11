@@ -16,11 +16,12 @@ The app combines weather, traffic, flood risk, route data, school advisories, go
 - Real-time weather dashboard using Open-Meteo with optional AccuWeather fallback
 - GPS-based location tracking with automatic Subic fallback when precise location is unavailable
 - Live or estimated traffic risk using TomTom Traffic API with rush-hour fallback
+- Route-aware TomTom traffic sampling across start, middle, and destination points, with low/moderate/high traffic volume display
 - Route saving with distance, travel time, multi-mode fare estimates, student/PWD/senior discounts, and risk status
 - Smart combined risk messages that explain whether weather/heat, traffic, flood risk, or a mix of them is causing the warning
 - Street-level route map preview using Leaflet, MapTiler/OpenStreetMap tiles, and closer route zoom
 - Flood risk estimation using elevation and rain indicators
-- Go / No-Go decision engine based on health, weather, traffic, flood, heat, and advisories
+- Go / No-Go decision engine based on health, weather, traffic, flood, heat, advisories, and selected route risk when available
 - Daily health check
 - School and government announcement support
 - PWA install support for mobile
