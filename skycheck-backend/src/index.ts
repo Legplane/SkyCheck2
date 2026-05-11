@@ -32,6 +32,10 @@ if (!process.env.GOOGLE_CLIENT_ID?.trim()) {
 const app  = express();
 const PORT = parseInt(process.env.PORT ?? '3000', 10);
 
+// Render sits in front of Express as a reverse proxy and sets X-Forwarded-For.
+// express-rate-limit needs this so it can identify the real client IP safely.
+app.set('trust proxy', 1);
+
 const allowedOrigins = [
   process.env.FRONTEND_URL ?? 'http://localhost:5173',
   'http://localhost:5173',

@@ -107,7 +107,8 @@ async function fetchTomTomPoint(lat: number, lon: number, label: string): Promis
     };
   } catch (err: unknown) {
     const status = axios.isAxiosError(err) ? err.response?.status : null;
-    if (status === 429) console.warn('[Traffic] TomTom daily limit exceeded - using time-based fallback');
+    if (status === 400) console.info('[Traffic] TomTom found no usable road segment for a sampled point - using fallback');
+    else if (status === 429) console.warn('[Traffic] TomTom daily limit exceeded - using time-based fallback');
     else if (status === 401 || status === 403) console.warn('[Traffic] TomTom key rejected - using time-based fallback');
     else if (status !== 404) {
       const code = axios.isAxiosError(err) ? err.code : undefined;
