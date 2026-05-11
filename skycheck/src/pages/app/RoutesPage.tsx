@@ -39,7 +39,7 @@ export default function RoutesPage() {
   const limitReached = visibleRoutes.length >= MAX_ROUTES;
 
   return (
-    <div className="flex flex-col min-h-screen w-full max-w-6xl mx-auto bg-gray-50 pb-20">
+    <div className="flex flex-col min-h-screen w-full max-w-6xl mx-auto overflow-x-hidden bg-gray-50 pb-20">
       {/* Header */}
       <header className="flex items-center justify-between px-4 pt-12 pb-3 bg-white border-b border-gray-100">
         <h1 className="text-lg font-bold text-gray-900">My Routes</h1>
@@ -56,7 +56,7 @@ export default function RoutesPage() {
         </div>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 pt-4 space-y-3">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden px-4 pt-4 space-y-3">
         {/* Skeletons */}
         {isLoading && isOnline && [1, 2].map(i => <RouteCardSkeleton key={i} />)}
 

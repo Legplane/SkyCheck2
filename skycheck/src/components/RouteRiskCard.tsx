@@ -48,16 +48,16 @@ export default function RouteRiskCard({ route }: RouteRiskCardProps) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
             <span className="text-base">{weatherIcon}</span>
-            <p className="text-sm font-bold text-gray-900 truncate">{routeName}</p>
+            <p className="min-w-0 text-sm font-bold text-gray-900 leading-snug break-words">{routeName}</p>
           </div>
           <div className="flex items-center gap-3 mt-0.5 flex-wrap">
             <div className="flex items-center gap-1">
               <Clock size={10} className="text-gray-400" />
               <span className="text-xs text-gray-500">Depart {route.departTime}</span>
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex min-w-0 items-center gap-1">
               <MapPin size={10} className="text-gray-400" />
-              <span className="text-xs text-gray-500">{route.startAddress.split(',')[0]}</span>
+              <span className="min-w-0 break-words text-xs text-gray-500">{route.startAddress.split(',')[0]}</span>
             </div>
             {temperature !== null && (
               <span className="text-xs font-semibold text-gray-700">{Math.round(temperature)}°C</span>
@@ -109,11 +109,11 @@ export default function RouteRiskCard({ route }: RouteRiskCardProps) {
       </div>
 
       {/* Risk basis */}
-      <p className="text-[10px] font-semibold text-gray-700 mt-1.5 leading-relaxed">
+      <p className="mt-1.5 whitespace-normal break-words text-[10px] font-semibold text-gray-700 leading-relaxed">
         {commuteRiskHeadline(risk)}
       </p>
       {risk.basis && (
-        <p className="text-[10px] text-gray-500 mt-1 leading-relaxed">{risk.basis}</p>
+        <p className="mt-1 whitespace-normal break-words text-[10px] text-gray-500 leading-relaxed">{risk.basis}</p>
       )}
 
       {route.fareEstimates && route.fareEstimates.length > 0 && (

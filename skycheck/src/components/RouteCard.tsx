@@ -40,7 +40,7 @@ export default function RouteCard({ route, onEdit, onDelete }: RouteCardProps) {
       {/* Header row */}
       <div className="flex items-start justify-between gap-2">
         <div className="flex-1 min-w-0">
-          <h3 className="font-bold text-gray-900 text-sm truncate">
+          <h3 className="font-bold text-gray-900 text-sm leading-snug break-words">
             {route.label ?? `${route.startAddress.split(',')[0]} → ${route.destAddress.split(',')[0]}`}
           </h3>
           <div className="flex items-center gap-1 mt-0.5">
@@ -71,11 +71,11 @@ export default function RouteCard({ route, onEdit, onDelete }: RouteCardProps) {
       </div>
 
       {/* Route info */}
-      <div className="flex items-center gap-2 text-xs text-gray-500">
+      <div className="grid grid-cols-[14px_1fr] gap-x-2 gap-y-1 text-xs text-gray-500 min-[520px]:flex min-[520px]:items-center">
         <MapPin size={11} />
-        <span className="truncate">{route.startAddress.split(',').slice(0,2).join(',')}</span>
+        <span className="min-w-0 break-words leading-snug min-[520px]:truncate">{route.startAddress.split(',').slice(0,2).join(',')}</span>
         <Navigation size={10} className="shrink-0" />
-        <span className="truncate">{route.destAddress.split(',').slice(0,2).join(',')}</span>
+        <span className="min-w-0 break-words leading-snug min-[520px]:truncate">{route.destAddress.split(',').slice(0,2).join(',')}</span>
       </div>
 
       {/* Risk badges */}
@@ -87,12 +87,12 @@ export default function RouteCard({ route, onEdit, onDelete }: RouteCardProps) {
         )}
       </div>
 
-      <p className="text-[10px] font-semibold text-gray-700 leading-relaxed">
+      <p className="whitespace-normal break-words text-[10px] font-semibold text-gray-700 leading-relaxed">
         {commuteRiskHeadline(displayRisk)}
       </p>
 
       {displayRisk.basis && (
-        <p className="text-[10px] text-gray-500 leading-relaxed">{displayRisk.basis}</p>
+        <p className="whitespace-normal break-words text-[10px] text-gray-500 leading-relaxed">{displayRisk.basis}</p>
       )}
 
       {/* Route stats */}
