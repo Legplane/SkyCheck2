@@ -35,6 +35,7 @@ const IDEAL_ACCURACY_M = 80;
 const MAX_TRUSTED_ACCURACY_M = 300;
 const GPS_SETTLE_TIMEOUT_MS = 25_000;
 const PRECISE_LOCATION_FALLBACK_REASON = 'Precise location unavailable. Showing Olongapo. For better accuracy, use mobile GPS.';
+const REFRESH_SETTLE_TIMEOUT_MS = 18_000;
 
 function _distanceM(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6_371_000;
@@ -198,26 +199,68 @@ export const useGeoStore = create<GeoState>((set, get) => ({
       return;
     }
 
+    _resolved = false;
+    _bestFix = null;
+    _stopGPS();
+    set({ status: 'requesting', reason: '' });
+
+    let settled = false;
+    let refreshTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const finish = (success: boolean) => {
+      if (settled) return;
+      settled = true;
+      if (refreshTimer) clearTimeout(refreshTimer);
+      if (!success) _stopGPS();
+      resolve(success);
+    };
+
+    refreshTimer = setTimeout(() => {
+      if (_bestFix && _bestFix.coords.accuracy <= MAX_TRUSTED_ACCURACY_M) {
+        _applyFix(_bestFix, set);
+        finish(true);
+      } else {
+        _applyFallback(set, PRECISE_LOCATION_FALLBACK_REASON, _bestFix ? Math.round(_bestFix.coords.accuracy) : 0);
+        finish(false);
+      }
+    }, REFRESH_SETTLE_TIMEOUT_MS);
+
     navigator.geolocation.getCurrentPosition(
       (pos) => {
+        if (_isBetterFix(pos, _bestFix)) _bestFix = pos;
         if (pos.coords.accuracy <= MAX_TRUSTED_ACCURACY_M) {
           _applyFix(pos, set);
-          if (_watchId === null) get().startGPS();
-          resolve(true);
+          finish(true);
         } else {
-          set({ reason: 'Waiting for a more precise GPS location', accuracy: Math.round(pos.coords.accuracy) });
-          if (_watchId === null) get().startGPS();
-          resolve(false);
+          set({ reason: PRECISE_LOCATION_FALLBACK_REASON, accuracy: Math.round(pos.coords.accuracy) });
         }
       },
       () => {
-        resolve(false);
+        _applyFallback(set);
+        finish(false);
       },
       {
         enableHighAccuracy: true,
         maximumAge:         0,
-        timeout:            15_000,
+        timeout:            REFRESH_SETTLE_TIMEOUT_MS,
       },
+    );
+
+    _watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        if (_isBetterFix(pos, _bestFix)) _bestFix = pos;
+        if (pos.coords.accuracy <= MAX_TRUSTED_ACCURACY_M) {
+          _applyFix(pos, set);
+          finish(true);
+        }
+      },
+      () => {
+        if (!settled) {
+          _applyFallback(set);
+          finish(false);
+        }
+      },
+      { enableHighAccuracy: true, maximumAge: 0, timeout: REFRESH_SETTLE_TIMEOUT_MS },
     );
   }),
 }));

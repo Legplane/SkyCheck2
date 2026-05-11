@@ -175,7 +175,8 @@ export default function DashboardPage() {
   }
 
   const { current, hourly, risk, commuteTips, location } = data;
-  const displayLocation = location || CITY_WEATHER_LABEL;
+  const hasTrustedGps = status === 'granted';
+  const displayLocation = hasTrustedGps ? (location || CITY_WEATHER_LABEL) : CITY_WEATHER_LABEL;
 
   const updatedLabel = formatUpdatedAt(
     lastManualRefreshAt
@@ -203,7 +204,7 @@ export default function DashboardPage() {
               <span className="shrink-0 text-[11px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full font-medium inline-flex items-center gap-0.5">
                 <Navigation size={9} /> Live
               </span>
-              {isLive && accuracy > 0 && (
+              {hasTrustedGps && accuracy > 0 && (
                 <span className="text-[11px] text-gray-400">GPS pin identifies your barangay/street</span>
               )}
             </div>
@@ -321,7 +322,7 @@ function LocationBanner({ reason, onRetry }: { reason: string; onRetry: () => vo
     <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 flex items-start gap-2">
       <AlertTriangle size={14} className="text-amber-600 shrink-0" />
       <span className="text-xs text-amber-800 flex-1 min-w-0 leading-snug break-words">
-        {reason || 'Location unavailable'} Showing live Olongapo weather.
+        {reason || 'Location unavailable'} Showing Olongapo City.
       </span>
       <button
         type="button"

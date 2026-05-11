@@ -105,6 +105,17 @@ function compactLocationName(name: string): string {
     .trim();
 }
 
+function normalizeOlongapoLocalName(name: string): string {
+  const compact = compactLocationName(name);
+  const lower = compact.toLowerCase();
+
+  // Nominatim sometimes returns subdivision names instead of the barangay.
+  // Holy Spirit Subdivision is commonly used for points inside Tabacuhan.
+  if (lower.includes('holy spirit')) return 'Tabacuhan';
+
+  return compact;
+}
+
 function pickDisplayLocation(input: {
   nominatim: string;
   accuWeatherLocality?: string;
@@ -163,7 +174,7 @@ async function resolvePhLocation(lat: number, lon: number): Promise<string> {
       a.county ||
       OLONGAPO_CITY_CENTER.label;
 
-    const localName = compactLocationName(local ?? '');
+    const localName = normalizeOlongapoLocalName(local ?? '');
     const cityName = compactLocationName(city);
 
     if (localName && cityName && localName.toLowerCase() !== cityName.toLowerCase()) {
