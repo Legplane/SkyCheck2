@@ -5,6 +5,7 @@ import { evaluateRouteCombinedRisk } from './combinedRiskService';
 import { getCacheSize } from './weatherCache';
 import { RISK } from '../constants/risk';
 import type { RiskLevel, CurrentWeather } from '../types';
+import { activeSinceDate, getActiveWindowMinutes } from './activityService';
 
 const prisma = new PrismaClient();
 
@@ -12,7 +13,21 @@ export function startRiskCron(): void {
   cron.schedule('*/15 * * * *', async () => {
     console.log(`[Cron] Risk refresh — ${new Date().toISOString()} cache:${getCacheSize()}`);
     try {
-      const routes = await prisma.route.findMany({ include: { user: true } });
+      const activeSince = activeSinceDate();
+      const [routes, skipped] = await Promise.all([
+        prisma.route.findMany({
+          include: { user: true },
+          where: { user: { lastActiveAt: { gte: activeSince } } },
+        }),
+        prisma.route.count({
+          where: {
+            OR: [
+              { user: { lastActiveAt: null } },
+              { user: { lastActiveAt: { lt: activeSince } } },
+            ],
+          },
+        }),
+      ]);
       let updated = 0, fired = 0;
 
       for (const route of routes) {
@@ -54,7 +69,7 @@ export function startRiskCron(): void {
         }
         await sleep(3000);
       }
-      console.log(`[Cron] Done — ${updated} updated, ${fired} alerts`);
+      console.log(`[Cron] Done - ${updated} updated, ${fired} alerts, ${skipped} inactive routes skipped (${getActiveWindowMinutes()}m window)`);
     } catch (err) {
       console.error('[Cron] Fatal:', err);
     }
@@ -68,7 +83,12 @@ export function startMorningAlertCron(): void {
     try {
       const routes = await prisma.route.findMany({
         include: { user: true },
-        where:   { user: { morningAlerts: true } },
+        where:   {
+          user: {
+            morningAlerts: true,
+            lastActiveAt: { gte: activeSinceDate() },
+          },
+        },
       });
       for (const route of routes) {
         const overall = route.lastOverallRisk as RiskLevel;

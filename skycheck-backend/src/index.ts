@@ -17,6 +17,7 @@ import announcementRoutes from './routes/announcements';
 import { startRiskCron, startMorningAlertCron } from './services/cronService';
 import { clearStaleBasis } from './utils/clearStaleBasis';
 import { getTomTomStatus } from './services/trafficService';
+import { getAccuWeatherUsageStatus } from './services/accuWeatherService';
 
 const REQUIRED_ENV = ['DATABASE_URL', 'JWT_SECRET'];
 const missing = REQUIRED_ENV.filter(k => !process.env[k]);
@@ -76,6 +77,9 @@ app.get('/health-check-server', (_req, res) => res.json({
   timestamp: new Date().toISOString(),
   traffic: {
     tomtom: getTomTomStatus(),
+  },
+  weather: {
+    accuweather: getAccuWeatherUsageStatus(),
   },
 }));
 

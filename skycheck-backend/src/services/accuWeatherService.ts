@@ -9,13 +9,23 @@ import axios from 'axios';
 
 const AW_BASE = 'https://dataservice.accuweather.com';
 const GEO_TTL_MS = 24 * 60 * 60 * 1000;
-const FORECAST_TTL_MS = 30 * 60 * 1000;
+const FORECAST_TTL_MS = Math.max(
+  30,
+  Number.parseInt(process.env.ACCUWEATHER_REFRESH_MINUTES ?? '90', 10) || 90,
+) * 60 * 1000;
 const AW_TIMEOUT_MS = 8000;
+const DAILY_REQUEST_BUDGET = Math.max(
+  10,
+  Number.parseInt(process.env.ACCUWEATHER_DAILY_REQUEST_BUDGET ?? '40', 10) || 40,
+);
 
 const geoCache = new Map<string, { cachedAt: number; result: AccuGeoResult | null }>();
 const currentCache = new Map<string, { cachedAt: number; result: AWCurrent | null }>();
 const hourlyCache = new Map<string, { cachedAt: number; result: AWHourly[] }>();
 let quotaCooldownUntil = 0;
+let dailyBudgetKey = '';
+let dailyRequestCount = 0;
+let budgetWarningShown = false;
 
 export interface AccuGeoResult {
   locationKey: string;
@@ -47,6 +57,39 @@ function remember<T>(cache: Map<string, { cachedAt: number; result: T }>, key: s
   return result;
 }
 
+function manilaDayKey(): string {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Manila',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+}
+
+function resetDailyBudgetIfNeeded(): void {
+  const today = manilaDayKey();
+  if (dailyBudgetKey !== today) {
+    dailyBudgetKey = today;
+    dailyRequestCount = 0;
+    budgetWarningShown = false;
+  }
+}
+
+function canSpendAccuWeatherRequest(): boolean {
+  resetDailyBudgetIfNeeded();
+
+  if (dailyRequestCount >= DAILY_REQUEST_BUDGET) {
+    if (!budgetWarningShown) {
+      console.warn(`[Weather] AccuWeather daily safety budget reached (${dailyRequestCount}/${DAILY_REQUEST_BUDGET}) - using Open-Meteo fallback until tomorrow`);
+      budgetWarningShown = true;
+    }
+    return false;
+  }
+
+  dailyRequestCount++;
+  return true;
+}
+
 function isAccuWeatherCoolingDown(): boolean {
   return Date.now() < quotaCooldownUntil;
 }
@@ -72,6 +115,21 @@ function logAccuWeatherFailure(label: string, e: unknown): void {
 
 export function accuWeatherAvailable(): boolean {
   return !isAccuWeatherCoolingDown();
+}
+
+export function getAccuWeatherUsageStatus(): {
+  used: number;
+  budget: number;
+  refreshMinutes: number;
+  coolingDown: boolean;
+} {
+  resetDailyBudgetIfNeeded();
+  return {
+    used: dailyRequestCount,
+    budget: DAILY_REQUEST_BUDGET,
+    refreshMinutes: Math.round(FORECAST_TTL_MS / 60000),
+    coolingDown: isAccuWeatherCoolingDown(),
+  };
 }
 
 /** AccuWeather icon (1–44+) → WMO-style code used by risk + labels in this app */
@@ -122,6 +180,7 @@ export async function accuWeatherGeoposition(
   const cacheKey = coordCacheKey(lat, lon);
   const cached = getFresh(geoCache, cacheKey, GEO_TTL_MS);
   if (cached !== null) return cached;
+  if (!canSpendAccuWeatherRequest()) return null;
 
   try {
     const { data } = await axios.get<AWGeoResponse>(`${AW_BASE}/locations/v1/cities/geoposition/search`, {
@@ -143,6 +202,7 @@ export async function accuWeatherCurrent(locationKey: string, apiKey: string, fo
   const cacheKey = locationKey;
   const cached = getFresh(currentCache, cacheKey, FORECAST_TTL_MS);
   if (cached !== null) return cached;
+  if (!canSpendAccuWeatherRequest()) return null;
 
   try {
     const { data } = await axios.get<AWCurrent[]>(`${AW_BASE}/currentconditions/v1/${locationKey}`, {
@@ -163,6 +223,7 @@ export async function accuWeatherHourly24(locationKey: string, apiKey: string, f
   const cacheKey = locationKey;
   const cached = getFresh(hourlyCache, cacheKey, FORECAST_TTL_MS);
   if (cached !== null) return cached;
+  if (!canSpendAccuWeatherRequest()) return [];
 
   try {
     const { data } = await axios.get<AWHourly[]>(`${AW_BASE}/forecasts/v1/hourly/24hour/${locationKey}`, {

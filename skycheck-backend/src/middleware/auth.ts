@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { touchUserActivity } from '../services/activityService';
 
 interface JWTPayload {
   userId: string;
@@ -18,6 +19,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     const payload = jwt.verify(token, process.env.JWT_SECRET!) as JWTPayload;
     req.userId    = payload.userId;
     req.userEmail = payload.email;
+    touchUserActivity(payload.userId);
     next();
   } catch {
     res.status(401).json({ error: 'Unauthorized — invalid or expired token' });
@@ -31,6 +33,7 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction): 
       const payload = jwt.verify(auth.slice(7), process.env.JWT_SECRET!) as JWTPayload;
       req.userId    = payload.userId;
       req.userEmail = payload.email;
+      touchUserActivity(payload.userId);
     } catch { /* ignore */ }
   }
   next();

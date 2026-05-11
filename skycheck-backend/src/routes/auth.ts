@@ -8,6 +8,7 @@ import { signToken, requireAuth } from '../middleware/auth';
 import { sendVerificationEmail, sendPasswordResetEmail, getEmailConfigStatus } from '../services/emailService';
 import { verifyFirebaseIdToken } from '../services/firebaseAdmin';
 import { RISK } from '../constants/risk';
+import { touchUserActivity } from '../services/activityService';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -201,8 +202,9 @@ router.post('/google', loginLimiter, async (req: Request, res: Response) => {
 
     await prisma.user.update({
       where: { id: user.id },
-      data: { failedLogins: 0, lockedUntil: null },
+      data: { failedLogins: 0, lockedUntil: null, lastActiveAt: new Date() },
     });
+    touchUserActivity(user.id, true);
 
     const token = signToken(user.id, user.email);
     res.json({
@@ -294,8 +296,9 @@ router.post('/firebase', loginLimiter, async (req: Request, res: Response) => {
 
     await prisma.user.update({
       where: { id: user.id },
-      data: { failedLogins: 0, lockedUntil: null },
+      data: { failedLogins: 0, lockedUntil: null, lastActiveAt: new Date() },
     });
+    touchUserActivity(user.id, true);
 
     const token = signToken(user.id, user.email);
     res.json({
@@ -369,7 +372,8 @@ router.post('/login', loginLimiter, async (req: Request, res: Response) => {
     }
 
     // Reset failed logins on success
-    await prisma.user.update({ where: { id: user.id }, data: { failedLogins: 0, lockedUntil: null } });
+    await prisma.user.update({ where: { id: user.id }, data: { failedLogins: 0, lockedUntil: null, lastActiveAt: new Date() } });
+    touchUserActivity(user.id, true);
 
     const token = signToken(user.id, user.email);
     res.json({
@@ -408,8 +412,9 @@ router.post('/verify-email', async (req: Request, res: Response) => {
 
     await prisma.user.update({
       where: { id: user.id },
-      data: { isVerified: true, verifyTok: null, verifyExp: null },
+      data: { isVerified: true, verifyTok: null, verifyExp: null, lastActiveAt: new Date() },
     });
+    touchUserActivity(user.id, true);
 
     const jwt = signToken(user.id, user.email);
     res.json({
