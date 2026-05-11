@@ -22,6 +22,8 @@ The final output is a Go / No-Go decision:
 - `OWN_RISK` - user may proceed, but caution is needed
 - `DO_NOT_GO` - travel is unsafe or unnecessary
 
+The app also shows combined risk messages. Instead of saying "severe weather" for every high-risk case, SkyCheck explains the actual cause, such as high weather/heat risk, heavy traffic, flood risk, or a mixed condition like high weather risk with moderate traffic.
+
 ## 2. Problem Solved
 
 Students often decide whether to go to school using incomplete information. Weather apps may show rain but not commute risk. Traffic apps may show road speed but not health or class status. School announcements may be separate from weather warnings.
@@ -65,6 +67,8 @@ Its unique value is the combination of:
 - Class status
 - Government advisories
 - Saved route monitoring
+- Multi-transport fare estimates with regular and student/PWD/senior discounted fares
+- Cause-aware risk explanations for weather/heat, traffic, flood, and mixed-risk combinations
 - Offline cached decision support
 
 Instead of asking "What is the weather?", SkyCheck answers: **"Should I go to school today?"**
@@ -272,10 +276,13 @@ Route risk includes:
 - Flood
 - Overall risk
 - Risk basis explanation
+- Combined risk headline explaining the main cause and secondary risks
 
 Saved routes are refreshed by the backend and cached on the frontend. Offline mode can show the last cached saved routes, but adding, editing, and deleting routes require internet.
 
-The route preview map uses Leaflet with MapTiler street tiles when a key is configured, otherwise it falls back to OpenStreetMap tiles. The map now zooms closer for route endpoints so nearby streets and barangay-level detail are easier to inspect.
+The route preview map uses Leaflet with MapTiler street tiles when a key is configured, otherwise it falls back to OpenStreetMap tiles. The map zooms closer for route endpoints so nearby streets and barangay-level detail are easier to inspect.
+
+Route cards are responsive. On smaller phones, long route names, addresses, risk messages, and fare labels wrap instead of being cropped. Fare estimate cards use a single-column layout on narrow screens and switch to two columns when the screen is wide enough.
 
 Fare estimates include:
 
@@ -284,7 +291,22 @@ Fare estimates include:
 - Taxi - based on LTFRB taxi fare formula using flag-down, per-kilometer, and per-minute travel time charges.
 - Maxim - app-based motorcycle ride estimate with a demand/availability buffer.
 
+Each supported fare mode shows an original estimate and a discounted estimate for student, PWD, and senior users where the statutory discount is applicable. Maxim is shown separately because platform promos and statutory discount handling may vary.
+
 The fare feature is an estimate and budgeting aid, not an official fare matrix. Final fares may change due to local ordinances, route availability, traffic, waiting time, or app demand.
+
+## 12.1 Combined Risk Messaging
+
+SkyCheck calculates the overall risk by taking the highest level among weather/heat, traffic, and flood risk. The UI then builds a readable message from the combination.
+
+Examples:
+
+- Weather/heat `HIGH`, traffic `MEDIUM`, flood `LOW`: `High weather/heat risk with moderate traffic - consider delaying travel and prepare for harsh conditions`
+- Weather/heat `LOW`, traffic `HIGH`, flood `LOW`: `High traffic risk - expect major delays and leave earlier`
+- Weather/heat `MEDIUM`, traffic `MEDIUM`, flood `LOW`: `Moderate weather/heat and traffic risk - bring protection and allow extra travel time`
+- Flood `HIGH` with any secondary risk: the message prioritizes flood safety and recommends avoiding low-lying routes
+
+This prevents misleading messages, such as showing "severe weather" when the actual high-risk cause is traffic.
 
 ## 13. Go / No-Go Engine
 
@@ -465,6 +487,7 @@ Accuracy is improved by:
 - Adding traffic and flood context
 - Showing fallback estimates when live APIs fail
 - Using live GPS coordinates when available, with automatic Subic fallback when precise location cannot be trusted
+- Explaining mixed risk combinations instead of relying only on a single overall risk label
 
 The app should be presented as a support tool that helps students make safer decisions, not as an absolute guarantee.
 

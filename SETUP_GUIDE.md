@@ -747,8 +747,26 @@ SkyCheck estimates several transport modes for budgeting:
 - Taxi uses LTFRB taxi matrix style calculation.
 - Tricycle is marked conditional/limited because fares and allowed routes are set by local LGUs, and tricycles may be restricted from national highways or out-of-zone trips.
 - Maxim/app-based rides can change due to demand, driver availability, or platform pricing.
+- Fare cards show both regular fare and the estimated student/PWD/senior discounted fare where applicable.
 
 Treat these as commute planning estimates, not official receipts.
+
+### Route text or fare cards look cropped on mobile
+
+The current route UI is designed to wrap long route names, addresses, risk explanations, and fare labels on narrow phones.
+
+If text still appears cropped after deploying:
+
+1. Hard refresh the browser or reinstall/refresh the PWA so the newest service worker is active.
+2. Confirm the deployed frontend is using the latest commit.
+3. Test with a small viewport such as 390x844.
+4. Check that custom browser zoom is not forcing the page wider than the device.
+
+Expected behavior:
+
+- Route names and addresses wrap on phone screens.
+- Fare estimates use one column on narrow screens and two columns on wider screens.
+- Risk explanations wrap instead of overflowing horizontally.
 
 ---
 
@@ -866,6 +884,19 @@ When a route has both a start and destination, SkyCheck:
 5. Overall risk = `max(weather, traffic, flood)` across both endpoints
 
 This means a route from elevated Olongapo to flood-prone Pampanga lowlands correctly shows HIGH flood risk even if the start point is safe.
+
+### Combined risk message examples
+
+The app does not use only one generic message per risk level. It explains the cause of the risk:
+
+- High weather/heat + medium traffic + low flood:
+  `High weather/heat risk with moderate traffic - consider delaying travel and prepare for harsh conditions`
+- Low weather + high traffic + low flood:
+  `High traffic risk - expect major delays and leave earlier`
+- Medium weather + medium traffic + low flood:
+  `Moderate weather/heat and traffic risk - bring protection and allow extra travel time`
+- High flood with any secondary risk:
+  the message prioritizes avoiding low-lying routes.
 
 ### Flood thresholds (calibrated for Central Luzon)
 
