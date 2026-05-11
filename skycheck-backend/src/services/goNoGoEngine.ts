@@ -190,6 +190,7 @@ function buildTrafficAssessmentFactor(input: GoNoGoInput): GoNoGoFactor {
     const cur = input.trafficCurrentKmh ?? 0;
     const ff = input.trafficFreeFlowKmh ?? 0;
     const ratioBit = pct !== undefined ? ` ~${pct}% of free-flow speed.` : '';
+    const liveLabel = input.trafficLabel ?? 'Live road-speed reading';
     const status =
       input.trafficRisk === 'HIGH' ? 'DANGER'
       : input.trafficRisk === 'MEDIUM' ? 'CAUTION'
@@ -203,7 +204,7 @@ function buildTrafficAssessmentFactor(input: GoNoGoInput): GoNoGoFactor {
       label: 'Traffic',
       status,
       detail:
-        `${verb} near you — observed ~${cur} km/h vs free-flow ~${ff} km/h.${ratioBit} (TomTom)`,
+        `${liveLabel}: ${verb.toLowerCase()} - observed ~${cur} km/h vs free-flow ~${ff} km/h.${ratioBit} (TomTom)`,
     };
   }
 

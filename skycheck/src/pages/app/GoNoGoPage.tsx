@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -5,7 +6,7 @@ import {
   XCircle, Shield, Thermometer, Car, CloudRain,
   Waves, Building2, Landmark, Activity, Sun
 } from 'lucide-react';
-import { evaluateGoNoGo, getTodayHealthCheck } from '../../api';
+import { evaluateGoNoGo, getRoutes, getTodayHealthCheck } from '../../api';
 import { useGeoStore } from '../../store/geoStore';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import type { GoNoGoVerdict, GoNoGoFactor, GoNoGoResult, HealthCheck, WeatherSnapshot } from '../../types';
@@ -48,6 +49,7 @@ export default function GoNoGoPage() {
   const navigate = useNavigate();
   const qc = useQueryClient();
   const isOnline = useOnlineStatus();
+  const [selectedRouteId, setSelectedRouteId] = useState('');
   // Use global GPS store — no per-page GPS restart
   const lat      = useGeoStore((s) => s.lat);
   const lon      = useGeoStore((s) => s.lon);
@@ -66,10 +68,21 @@ export default function GoNoGoPage() {
 
   const healthKey = todayHealth ? healthCheckSignature(todayHealth) : 'none';
 
+  const { data: routes = [] } = useQuery({
+    queryKey: ['routes'],
+    queryFn: getRoutes,
+    staleTime: 5 * 60 * 1000,
+    enabled: isOnline && !!todayHealth,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+  });
+
+  const selectedRoute = routes.find((route) => route.id === selectedRouteId) ?? null;
+
   const { data: liveResult, isLoading, isFetching, refetch, error } = useQuery({
     // Include health answers so updating the check invalidates cache and refetches evaluation.
-    queryKey: ['go-no-go', lat, lon, healthKey],
-    queryFn:  () => evaluateGoNoGo({ lat, lon }),
+    queryKey: ['go-no-go', lat, lon, healthKey, selectedRouteId || 'current-location'],
+    queryFn:  () => evaluateGoNoGo({ lat, lon, routeId: selectedRouteId || undefined }),
     staleTime: 5 * 60 * 1000,
     gcTime:    0,
     retry: 1,
@@ -208,6 +221,59 @@ export default function GoNoGoPage() {
           </div>
         </div>
 
+        {/* Commute Basis */}
+        {isOnline && routes.length > 0 && (
+          <div className="mx-4 mt-3 bg-white rounded-2xl shadow-card p-4">
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <h3 className="text-sm font-bold text-gray-900 flex items-center gap-2 min-w-0">
+                <Car size={15} className="text-primary-600 shrink-0" />
+                <span className="break-words">Commute Basis</span>
+              </h3>
+              <span className="text-[11px] font-semibold text-primary-700 bg-primary-50 px-2 py-1 rounded-full shrink-0">
+                {selectedRoute ? 'Route TomTom' : 'GPS point'}
+              </span>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                onClick={() => setSelectedRouteId('')}
+                className={clsx(
+                  'text-left rounded-2xl border p-3 transition-colors min-w-0',
+                  selectedRouteId === ''
+                    ? 'border-primary-300 bg-primary-50'
+                    : 'border-gray-100 bg-gray-50 hover:bg-gray-100',
+                )}
+              >
+                <p className="text-sm font-bold text-gray-900 break-words">Current location</p>
+                <p className="text-[11px] text-gray-500 leading-relaxed break-words">
+                  Uses your GPS point. If the point is not on a mapped road, SkyCheck may use the time-based backup.
+                </p>
+              </button>
+              {routes.map((route) => {
+                const label = route.label || `${route.startAddress} to ${route.destAddress}`;
+                return (
+                  <button
+                    key={route.id}
+                    type="button"
+                    onClick={() => setSelectedRouteId(route.id)}
+                    className={clsx(
+                      'text-left rounded-2xl border p-3 transition-colors min-w-0',
+                      selectedRouteId === route.id
+                        ? 'border-primary-300 bg-primary-50'
+                        : 'border-gray-100 bg-gray-50 hover:bg-gray-100',
+                    )}
+                  >
+                    <p className="text-sm font-bold text-gray-900 break-words">{label}</p>
+                    <p className="text-[11px] text-gray-500 leading-relaxed break-words">
+                      Uses route traffic from start, middle, and destination when TomTom is available.
+                    </p>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Weather Snapshot */}
         <div className="mx-4 mt-3 bg-white rounded-2xl shadow-card p-4">
           <h3 className="text-sm font-bold text-gray-900 mb-3 flex items-center gap-2">
@@ -274,7 +340,7 @@ export default function GoNoGoPage() {
                         {factor.status}
                       </span>
                     </div>
-                    <p className="text-xs text-gray-500 mt-0.5 leading-relaxed">{factor.detail}</p>
+                    <p className="text-xs text-gray-500 mt-0.5 leading-relaxed break-words">{factor.detail}</p>
                   </div>
                   <div className={clsx('w-2.5 h-2.5 rounded-full shrink-0 mt-1.5', STATUS_DOT[factor.status])} />
                 </div>
