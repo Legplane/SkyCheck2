@@ -3,6 +3,7 @@ import { requireAuth } from '../middleware/auth';
 import { fetchWeatherData } from '../services/weatherService';
 import { evaluateCombinedRisk } from '../services/combinedRiskService';
 import { getCommuteTips } from '../services/weatherService';
+import { maybeCreateCurrentWeatherAlert } from '../services/weatherAlertService';
 
 const router = Router();
 
@@ -41,6 +42,19 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
       nominatim,
       accuWeatherLocality: providerPlaceName,
     });
+
+    if (req.userId) {
+      try {
+        await maybeCreateCurrentWeatherAlert({
+          userId: req.userId,
+          location,
+          risk,
+          weather: current,
+        });
+      } catch (alertErr) {
+        console.warn('[Weather] Alert creation skipped:', (alertErr as Error).message);
+      }
+    }
 
     res.json({ location, lat, lon, current, hourly, risk, commuteTips });
   } catch (err) {

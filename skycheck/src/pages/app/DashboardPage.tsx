@@ -82,6 +82,11 @@ export default function DashboardPage() {
 
   const data = liveData ?? (!isOnline ? cachedWeather : undefined);
 
+  useEffect(() => {
+    if (!liveData || liveData.risk.overall === 'LOW' || liveData.risk.overall === 'UNKNOWN') return;
+    qc.invalidateQueries({ queryKey: ['alerts'] });
+  }, [dataUpdatedAt, liveData, qc]);
+
   const handleStartGPS = useCallback(() => {
     const now = Date.now();
     if (now - gpsTapRef.current < 800) return;

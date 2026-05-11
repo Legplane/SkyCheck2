@@ -19,6 +19,7 @@ export default function AlertsPage() {
     queryFn: getAlerts,
     staleTime: 2 * 60 * 1000,
     gcTime: 30 * 60 * 1000,
+    refetchOnMount: 'always',
   });
 
   const { mutate: readOne } = useMutation({

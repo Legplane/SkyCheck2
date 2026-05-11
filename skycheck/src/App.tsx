@@ -72,6 +72,7 @@ function AppShell() {
     queryKey: ['alerts'],
     queryFn:  getAlerts,
     staleTime: 2 * 60 * 1000,
+    refetchOnMount: 'always',
   });
 
   const alertGroups: AlertGroup[] = Array.isArray(alertGroupsRaw) ? alertGroupsRaw : [];
