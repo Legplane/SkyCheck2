@@ -6,10 +6,10 @@ import { create } from 'zustand';
 // ─────────────────────────────────────────────────────────────────
 
 export const FALLBACK_LOCATION = {
-  lat: 14.8799,
-  lon: 120.2343,
-  label: 'Subic',
-  displayName: 'Subic, Zambales, Central Luzon',
+  lat: 14.8386,
+  lon: 120.2842,
+  label: 'Olongapo',
+  displayName: 'Olongapo, Zambales, Central Luzon',
 };
 
 export type GeoStatus = 'idle' | 'requesting' | 'granted' | 'denied' | 'unavailable';
@@ -32,9 +32,9 @@ let _timer:    ReturnType<typeof setTimeout> | null = null;
 let _resolved  = false;
 let _bestFix: GeolocationPosition | null = null;
 const IDEAL_ACCURACY_M = 80;
-const MAX_TRUSTED_ACCURACY_M = 500;
+const MAX_TRUSTED_ACCURACY_M = 300;
 const GPS_SETTLE_TIMEOUT_MS = 25_000;
-const PRECISE_LOCATION_FALLBACK_REASON = 'Precise location unavailable.';
+const PRECISE_LOCATION_FALLBACK_REASON = 'Precise location unavailable. Showing Olongapo. For better accuracy, use mobile GPS.';
 
 function _distanceM(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6_371_000;

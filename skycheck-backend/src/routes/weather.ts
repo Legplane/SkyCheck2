@@ -148,13 +148,13 @@ async function resolvePhLocation(lat: number, lon: number): Promise<string> {
     if (!a) return OLONGAPO_CITY_CENTER.label;
 
     const local =
-      a.suburb ||
+      a.road ||
+      a.barangay ||
       a.neighbourhood ||
       a.quarter ||
       a.city_district ||
-      a.barangay ||
       a.village ||
-      a.road;
+      a.suburb;
 
     const city =
       a.city ||
