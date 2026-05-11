@@ -13,7 +13,7 @@ export const RISK = {
   WEATHER: {
     // ── Rain ─────────────────────────────────────────────────────
     // PAGASA "Thunderstorm Warning" threshold is ~60% prob
-    RAIN_HIGH:  60,   // % precipitation probability → HIGH weather risk
+    RAIN_HIGH:  70,   // % precipitation probability → HIGH weather risk
     RAIN_MED:   40,   // % → MEDIUM weather risk (was 30 — too sensitive for PH)
 
     // ── Wind ─────────────────────────────────────────────────────
@@ -49,8 +49,8 @@ export const RISK = {
     ELEV_MED:   20,   // ≤20m = moderate flood zone (lower Subic, riverine Zambales)
 
     // Rainfall triggers
-    RAIN_PROB_HIGH: 55,   // % → significant flood risk
-    RAIN_PROB_MED:  35,   // %
+    RAIN_PROB_HIGH: 70,   // % → significant flood risk
+    RAIN_PROB_MED:  45,   // %
     PRECIP_HIGH:     8,   // mm accumulated → heavy runoff
     PRECIP_MED:      3,   // mm
   },

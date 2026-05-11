@@ -24,8 +24,8 @@ const FLOOD_THRESHOLDS = {
   MODERATE_ELEV: 20,    // below this = MEDIUM flood zone (lower Subic, riverine Zambales)
   // above 20m = LOW regardless of rain (upland areas)
 
-  RAIN_HIGH_PROB: 55,   // % precipitation probability → HIGH concern
-  RAIN_MED_PROB:  35,   // % → MEDIUM concern
+  RAIN_HIGH_PROB: 70,   // % precipitation probability → HIGH concern
+  RAIN_MED_PROB:  45,   // % → MEDIUM concern
   HEAVY_PRECIP:    8,   // mm accumulated → significant runoff
   MOD_PRECIP:      3,   // mm → moderate runoff
 };

@@ -7,7 +7,7 @@ import type { RiskLevel } from '../types';
 
 export const RISK = {
   WEATHER: {
-    RAIN_HIGH:  60,   // % precipitation probability → HIGH
+    RAIN_HIGH:  70,   // % precipitation probability → HIGH
     RAIN_MED:   40,   // % → MEDIUM  (was 30 — raised to reduce false alerts)
     WIND_HIGH:  50,   // km/h → HIGH  (was 15 — 15 km/h is just a breeze)
     WIND_MED:   30,   // km/h → MEDIUM (was 10)
@@ -21,8 +21,8 @@ export const RISK = {
   FLOOD: {
     ELEV_HIGH:       8,
     ELEV_MED:       20,
-    RAIN_PROB_HIGH: 55,
-    RAIN_PROB_MED:  35,
+    RAIN_PROB_HIGH: 70,
+    RAIN_PROB_MED:  45,
     PRECIP_HIGH:     8,
   },
 } as const;

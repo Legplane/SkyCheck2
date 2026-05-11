@@ -135,12 +135,12 @@ function calibratedRainProbability(args: {
   if (args.minutelyTotalMm >= 2) calibrated = Math.max(calibrated, 90);
   else if (args.minutelyTotalMm >= 1) calibrated = Math.max(calibrated, 80);
   else if (args.minutelyTotalMm >= 0.3) calibrated = Math.max(calibrated, 65);
-  else if (args.minutelyTotalMm >= 0.1 || args.minutelyWetSlots > 0) calibrated = Math.max(calibrated, 45);
+  else if (args.minutelyTotalMm >= 0.1 || args.minutelyWetSlots > 0) calibrated = Math.max(calibrated, 35);
   else if (hourlyWetMm >= 1) calibrated = Math.max(calibrated, 70);
   else if (hourlyWetMm >= 0.5) calibrated = Math.max(calibrated, 60);
   else if (hourlyWetMm >= 0.3) calibrated = Math.max(calibrated, 50);
-  else if (hourlyWetMm >= 0.1) calibrated = Math.max(calibrated, 35);
-  else if (wetCode) calibrated = Math.max(calibrated, args.cloudCover >= 80 ? 30 : 25);
+  else if (hourlyWetMm >= 0.1) calibrated = Math.max(calibrated, base >= 30 ? 35 : 25);
+  else if (wetCode) calibrated = Math.max(calibrated, args.cloudCover >= 80 ? 25 : 20);
 
   // For the next few hours, a dry 15-minute model is a strong local signal.
   if (args.hoursFromNow <= 3 && args.minutelyTotalMm < 0.05 && !wetCode && hourlyWetMm < 0.1) {
@@ -231,7 +231,7 @@ function blendedStreetRainProbability(args: {
   }
 
   if (wetCode && args.liquidMm < 0.1 && om < 30) {
-    blended = Math.min(Math.max(blended, cloudCover >= 80 ? 30 : 25), 45);
+    blended = Math.min(Math.max(blended, cloudCover >= 80 ? 25 : 20), 40);
   }
 
   return clampPercent(blended);
