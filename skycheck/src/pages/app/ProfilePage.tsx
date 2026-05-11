@@ -3,7 +3,8 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
   Lock, Shield, Info, Trash2, ChevronRight,
-  Bell, Volume2, Vibrate, LogOut, CheckCircle2
+  Bell, Volume2, Vibrate, LogOut, CheckCircle2,
+  X, CloudSun, MapPinned, Users, Target
 } from 'lucide-react';
 import { logout, updatePreferences } from '../../api/auth';
 import { useAuthStore } from '../../store/authStore';
@@ -15,6 +16,7 @@ export default function ProfilePage() {
   const { user, clearAuth, updatePreferences: storeUpdatePrefs } = useAuthStore();
 
   const [showChangePass, setShowChangePass] = useState(false);
+  const [showAbout, setShowAbout] = useState(false);
 
   const { mutate: doLogout } = useMutation({
     mutationFn: logout,
@@ -116,12 +118,12 @@ export default function ProfilePage() {
           <ActionRow
             icon={<Info size={18} className="text-gray-500" />}
             label="About SkyCheck"
-            onClick={() => {}}
+            onClick={() => setShowAbout(true)}
             subtitle="v1.0.0 · Code-B · BSCS-2C"
           />
         </div>
 
-        <div className="bg-white mx-4 mt-3 rounded-2xl p-4 shadow-card">
+        <div className="hidden">
           <div className="flex items-start gap-3">
             <Info size={18} className="mt-0.5 shrink-0 text-primary-600" />
             <div className="min-w-0">
@@ -164,6 +166,9 @@ export default function ProfilePage() {
       {/* Change Password Modal */}
       {showChangePass && (
         <ChangePasswordModal onClose={() => setShowChangePass(false)} />
+      )}
+      {showAbout && (
+        <AboutSkyCheckModal onClose={() => setShowAbout(false)} />
       )}
     </div>
   );
@@ -228,6 +233,85 @@ function ActionRow({
 }
 
 // ── Change Password Modal ─────────────────────────────────────────
+function AboutSkyCheckModal({ onClose }: { onClose: () => void }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/50 px-0 sm:items-center sm:px-6">
+      <div className="w-full max-h-[92vh] overflow-y-auto rounded-t-3xl bg-white shadow-2xl animate-slideUp sm:max-w-2xl sm:rounded-3xl">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-gray-100 bg-white px-5 py-4">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-widest text-primary-600">About</p>
+            <h2 className="text-lg font-bold text-gray-900">SkyCheck</h2>
+          </div>
+          <button onClick={onClose} className="rounded-xl p-2 text-gray-400 hover:bg-gray-100 hover:text-gray-700" aria-label="Close About SkyCheck">
+            <X size={18} />
+          </button>
+        </div>
+
+        <div className="space-y-5 px-5 py-5">
+          <div className="rounded-2xl bg-primary-50 p-4">
+            <div className="flex items-start gap-3">
+              <CloudSun size={22} className="mt-0.5 shrink-0 text-primary-600" />
+              <div>
+                <p className="text-sm font-bold text-gray-900">What SkyCheck Is</p>
+                <p className="mt-1 text-sm leading-relaxed text-gray-600">
+                  SkyCheck is a student commute decision-support app that helps users decide if it is safe and practical to go to school today.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <InfoBlock
+            icon={<Target size={20} className="text-green-600" />}
+            title="Purpose"
+            body="The app combines weather, rain probability, heat index, traffic, flood risk, saved routes, announcements, and a daily health check into one Go / No-Go recommendation for student commuters."
+          />
+          <InfoBlock
+            icon={<MapPinned size={20} className="text-amber-600" />}
+            title="How It Helps"
+            body="SkyCheck uses live and cached data to show route risk, traffic volume, fare estimates, offline access, and commute safety advice, especially for students around Gordon College and nearby areas."
+          />
+
+          <div className="rounded-2xl border border-gray-100 p-4">
+            <div className="flex items-start gap-3">
+              <Users size={20} className="mt-0.5 shrink-0 text-purple-600" />
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-gray-900">Developers</p>
+                <p className="mt-1 text-sm leading-relaxed text-gray-600">
+                  Developed by Team Code-B from BSCS - 2C, Gordon College.
+                </p>
+                <div className="mt-3 grid gap-2 text-sm font-semibold text-gray-800">
+                  <span>Floyd Allen B. Bueno</span>
+                  <span>Niño Bucud</span>
+                  <span>Jerobal Bueno</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="rounded-2xl bg-gray-50 p-4">
+            <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Version</p>
+            <p className="mt-1 text-sm font-semibold text-gray-700">SkyCheck v1.0.0 · Code-B · BSCS - 2C</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InfoBlock({ icon, title, body }: { icon: React.ReactNode; title: string; body: string }) {
+  return (
+    <div className="rounded-2xl border border-gray-100 p-4">
+      <div className="flex items-start gap-3">
+        <div className="mt-0.5 shrink-0">{icon}</div>
+        <div>
+          <p className="text-sm font-bold text-gray-900">{title}</p>
+          <p className="mt-1 text-sm leading-relaxed text-gray-600">{body}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 import { changePassword } from '../../api/auth';
 import { Eye, EyeOff } from 'lucide-react';
 
