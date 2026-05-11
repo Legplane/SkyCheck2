@@ -7,6 +7,7 @@ import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { RISK_BG_LIGHT } from '../constants/risk';
 import FareEstimateList from './FareEstimateList';
 import { commuteRiskHeadline } from '../utils/riskMessages';
+import TrafficVolumeBadge from './TrafficVolumeBadge';
 
 // ─────────────────────────────────────────────────────────────────
 // RouteRiskCard
@@ -99,6 +100,8 @@ export default function RouteRiskCard({ route }: RouteRiskCardProps) {
           risk.traffic === 'UNKNOWN' ? 'bg-gray-100 text-gray-500' :
           'bg-green-100 text-green-700'
         }`}>🚗 {risk.traffic}</span>
+
+        <TrafficVolumeBadge risk={risk} />
 
         {/* Flood sub-risk */}
         <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${

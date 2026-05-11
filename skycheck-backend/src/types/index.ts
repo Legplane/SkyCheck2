@@ -34,6 +34,8 @@ export interface CombinedRisk {
   trafficSource?: 'tomtom' | 'heuristic';
   trafficCurrentKmh?: number;
   trafficFreeFlowKmh?: number;
+  trafficVolumeLevel?: 'LOW' | 'MEDIUM' | 'HIGH' | 'UNKNOWN';
+  trafficLabel?: string;
   elevation?: number;
   basis: string;
 }
@@ -59,6 +61,7 @@ export interface TrafficResult {
   currentSpeed: number;
   freeFlowSpeed: number;
   riskLevel: RiskLevel;
+  volumeLevel: 'LOW' | 'MEDIUM' | 'HIGH' | 'UNKNOWN';
   /** Live TomTom segment vs PH time-of-day model */
   source: 'tomtom' | 'heuristic';
   label?: string;

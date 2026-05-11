@@ -1,7 +1,7 @@
 import type { RiskLevel, CombinedRisk, CurrentWeather } from '../types';
 import { maxRisk, riskScore } from '../constants/risk';
 import { evaluateWeatherRisk } from './weatherService';
-import { fetchTrafficLevel } from './trafficService';
+import { fetchRouteTrafficLevel, fetchTrafficLevel } from './trafficService';
 import { evaluateFloodRisk, evaluateRouteFloodRisk } from './floodService';
 
 // ─────────────────────────────────────────────────────────────────
@@ -12,7 +12,7 @@ import { evaluateFloodRisk, evaluateRouteFloodRisk } from './floodService';
 //
 // For routes (two points): evaluates weather at BOTH start and dest,
 //   takes the worst weather; evaluates flood at BOTH points; evaluates
-//   traffic at the start point (representative of route conditions).
+//   traffic along route start/middle/destination when TomTom is available.
 // ─────────────────────────────────────────────────────────────────
 
 // Dashboard / single-point evaluation
@@ -32,15 +32,17 @@ export async function evaluateCombinedRisk(
   const trafficSource           = trafficResult.status === 'fulfilled' ? trafficResult.value.source : undefined;
   const trafficCurrentKmh       = trafficResult.status === 'fulfilled' ? trafficResult.value.currentSpeed : undefined;
   const trafficFreeFlowKmh      = trafficResult.status === 'fulfilled' ? trafficResult.value.freeFlowSpeed : undefined;
+  const trafficVolumeLevel      = trafficResult.status === 'fulfilled' ? trafficResult.value.volumeLevel : undefined;
+  const trafficLabel            = trafficResult.status === 'fulfilled' ? trafficResult.value.label : undefined;
   const floodRisk: RiskLevel    = floodResult.status === 'fulfilled' ? floodResult.value.riskLevel : 'UNKNOWN';
   const elevation               = floodResult.status === 'fulfilled' ? floodResult.value.elevation : undefined;
 
   const overall = maxRisk(weatherRisk, trafficRisk, floodRisk);
-  const basis   = buildBasisText(current, weatherRisk, trafficRisk, floodRisk, trafficRatio, elevation, trafficSource);
+  const basis   = buildBasisText(current, weatherRisk, trafficRisk, floodRisk, trafficRatio, elevation, trafficSource, trafficLabel);
 
   return {
     overall, weather: weatherRisk, traffic: trafficRisk, flood: floodRisk,
-    trafficRatio, trafficSource, trafficCurrentKmh, trafficFreeFlowKmh,
+    trafficRatio, trafficSource, trafficCurrentKmh, trafficFreeFlowKmh, trafficVolumeLevel, trafficLabel,
     elevation, basis,
   };
 }
@@ -63,8 +65,7 @@ export async function evaluateRouteCombinedRisk(
     : destWeather;
 
   const [trafficResult, floodResult] = await Promise.allSettled([
-    // Traffic at start — most relevant for departure
-    fetchTrafficLevel(startLat, startLon),
+    fetchRouteTrafficLevel(startLat, startLon, destLat, destLon),
     // Flood at both endpoints — takes worst (lowest elevation)
     evaluateRouteFloodRisk(
       startLat, startLon, destLat, destLon,
@@ -78,15 +79,17 @@ export async function evaluateRouteCombinedRisk(
   const trafficSource           = trafficResult.status === 'fulfilled' ? trafficResult.value.source : undefined;
   const trafficCurrentKmh       = trafficResult.status === 'fulfilled' ? trafficResult.value.currentSpeed : undefined;
   const trafficFreeFlowKmh      = trafficResult.status === 'fulfilled' ? trafficResult.value.freeFlowSpeed : undefined;
+  const trafficVolumeLevel      = trafficResult.status === 'fulfilled' ? trafficResult.value.volumeLevel : undefined;
+  const trafficLabel            = trafficResult.status === 'fulfilled' ? trafficResult.value.label : undefined;
   const floodRisk: RiskLevel    = floodResult.status === 'fulfilled' ? floodResult.value.riskLevel : 'UNKNOWN';
   const elevation               = floodResult.status === 'fulfilled' ? floodResult.value.elevation : undefined;
 
   const overall = maxRisk(weatherRisk, trafficRisk, floodRisk);
-  const basis   = buildBasisText(worstWeather, weatherRisk, trafficRisk, floodRisk, trafficRatio, elevation, trafficSource);
+  const basis   = buildBasisText(worstWeather, weatherRisk, trafficRisk, floodRisk, trafficRatio, elevation, trafficSource, trafficLabel);
 
   return {
     overall, weather: weatherRisk, traffic: trafficRisk, flood: floodRisk,
-    trafficRatio, trafficSource, trafficCurrentKmh, trafficFreeFlowKmh,
+    trafficRatio, trafficSource, trafficCurrentKmh, trafficFreeFlowKmh, trafficVolumeLevel, trafficLabel,
     elevation, basis,
   };
 }
@@ -100,6 +103,7 @@ function buildBasisText(
   trafficRatio?: number,
   elevation?: number,
   trafficSource?: 'tomtom' | 'heuristic',
+  trafficLabel?: string,
 ): string {
   const parts: string[] = [];
 
@@ -108,8 +112,8 @@ function buildBasisText(
   }
 
   if (trafficRisk !== 'LOW' && trafficRisk !== 'UNKNOWN' && trafficRatio !== undefined) {
-    const label = trafficSource === 'tomtom' ? 'Live traffic flow' : 'Estimated traffic flow';
-    parts.push(`${trafficRisk} traffic: ${label.toLowerCase()} ${Math.round(trafficRatio * 100)}% of free-flow speed`);
+    const label = trafficLabel ?? (trafficSource === 'tomtom' ? 'Live traffic flow' : 'Estimated traffic flow');
+    parts.push(`${trafficRisk} traffic: ${label.toLowerCase()} at ${Math.round(trafficRatio * 100)}% of free-flow speed`);
   }
 
   if (floodRisk !== 'LOW' && elevation !== undefined && elevation >= 0) {

@@ -64,6 +64,8 @@ export interface CombinedRisk {
   trafficSource?: 'tomtom' | 'heuristic';
   trafficCurrentKmh?: number;
   trafficFreeFlowKmh?: number;
+  trafficVolumeLevel?: 'LOW' | 'MEDIUM' | 'HIGH' | 'UNKNOWN';
+  trafficLabel?: string;
   elevation?: number;       // metres
   basis: string;            // human-readable explanation
 }

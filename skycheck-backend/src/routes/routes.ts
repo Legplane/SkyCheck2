@@ -4,7 +4,7 @@ import { requireAuth } from '../middleware/auth';
 import { calculateRoute } from '../services/routeCalcService';
 import { fetchWeatherData } from '../services/weatherService';
 import { evaluateCombinedRisk, evaluateRouteCombinedRisk } from '../services/combinedRiskService';
-import { fetchTrafficLevel } from '../services/trafficService';
+import { fetchRouteTrafficLevel } from '../services/trafficService';
 import { evaluateRouteFloodRisk } from '../services/floodService';
 import { estimateFareOptions, estimateMaximFare } from '../utils/fareEstimates';
 import { RISK } from '../constants/risk';
@@ -28,7 +28,7 @@ async function evalRouteRisk(
   // If both fail, fall back gracefully
   if (startResult.status === 'rejected' && destResult.status === 'rejected') {
     const [trafficResult, floodResult] = await Promise.allSettled([
-      fetchTrafficLevel(startLat, startLon),
+      fetchRouteTrafficLevel(startLat, startLon, destLat, destLon),
       evaluateRouteFloodRisk(startLat, startLon, destLat, destLon, 0, 0),
     ]);
 

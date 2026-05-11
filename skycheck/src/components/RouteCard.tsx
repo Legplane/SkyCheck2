@@ -8,6 +8,7 @@ import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { formatDistance, formatDuration } from '../utils';
 import FareEstimateList from './FareEstimateList';
 import { commuteRiskHeadline } from '../utils/riskMessages';
+import TrafficVolumeBadge from './TrafficVolumeBadge';
 
 interface RouteCardProps {
   route: Route;
@@ -85,6 +86,7 @@ export default function RouteCard({ route, onEdit, onDelete }: RouteCardProps) {
         {isRefreshingRisk && (
           <span className="text-[10px] font-semibold text-gray-400">Refreshing...</span>
         )}
+        <TrafficVolumeBadge risk={displayRisk} />
       </div>
 
       <p className="whitespace-normal break-words text-[10px] font-semibold text-gray-700 leading-relaxed">

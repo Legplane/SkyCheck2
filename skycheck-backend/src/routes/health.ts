@@ -3,7 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { requireAuth } from '../middleware/auth';
 import { evaluateGoNoGo } from '../services/goNoGoEngine';
 import { fetchWeatherData, effectiveWindKmH } from '../services/weatherService';
-import { evaluateCombinedRisk } from '../services/combinedRiskService';
+import { evaluateCombinedRisk, evaluateRouteCombinedRisk } from '../services/combinedRiskService';
 import { manilaCheckDate } from '../utils/manilaDate';
 
 const router = Router();
@@ -107,14 +107,26 @@ router.post('/evaluate', requireAuth, async (req: Request, res: Response) => {
     if (routeId) {
       const route = await prisma.route.findUnique({ where: { id: routeId } });
       if (route && route.userId === req.userId) {
-        routeRisk = {
-          ...risk,
-          overall: route.lastOverallRisk as any,
-          weather: route.lastWeatherRisk as any,
-          traffic: route.lastTrafficRisk as any,
-          flood:   route.lastFloodRisk   as any,
-          basis:   route.lastRiskBasis,
-        };
+        try {
+          const [startWeather, destWeather] = await Promise.all([
+            fetchWeatherData(route.startLat, route.startLon),
+            fetchWeatherData(route.destLat, route.destLon),
+          ]);
+          routeRisk = await evaluateRouteCombinedRisk(
+            route.startLat, route.startLon,
+            route.destLat, route.destLon,
+            startWeather.current, destWeather.current,
+          );
+        } catch {
+          routeRisk = {
+            ...risk,
+            overall: route.lastOverallRisk as any,
+            weather: route.lastWeatherRisk as any,
+            traffic: route.lastTrafficRisk as any,
+            flood:   route.lastFloodRisk   as any,
+            basis:   route.lastRiskBasis,
+          };
+        }
       }
     }
 
@@ -152,6 +164,8 @@ router.post('/evaluate', requireAuth, async (req: Request, res: Response) => {
       trafficSource:       routeRisk.trafficSource,
       trafficCurrentKmh:   routeRisk.trafficCurrentKmh,
       trafficFreeFlowKmh:  routeRisk.trafficFreeFlowKmh,
+      trafficVolumeLevel:  routeRisk.trafficVolumeLevel,
+      trafficLabel:        routeRisk.trafficLabel,
 
       hasFever:            health.hasFever,
       feverTemp:           health.feverTemp,
@@ -189,6 +203,12 @@ router.post('/evaluate', requireAuth, async (req: Request, res: Response) => {
         traffic: routeRisk.traffic,
         flood:   routeRisk.flood,
         basis:   routeRisk.basis,
+        trafficRatio: routeRisk.trafficRatio,
+        trafficSource: routeRisk.trafficSource,
+        trafficCurrentKmh: routeRisk.trafficCurrentKmh,
+        trafficFreeFlowKmh: routeRisk.trafficFreeFlowKmh,
+        trafficVolumeLevel: routeRisk.trafficVolumeLevel,
+        trafficLabel: routeRisk.trafficLabel,
       },
       schoolStatus: schoolAnn?.status ?? 'F2F',
       schoolTitle:  schoolAnn?.title  ?? null,

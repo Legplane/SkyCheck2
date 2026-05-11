@@ -36,6 +36,8 @@ export interface GoNoGoInput {
   trafficSource?: 'tomtom' | 'heuristic';
   trafficCurrentKmh?: number;
   trafficFreeFlowKmh?: number;
+  trafficVolumeLevel?: 'LOW' | 'MEDIUM' | 'HIGH' | 'UNKNOWN';
+  trafficLabel?: string;
 
   // Health
   hasFever:           boolean;
