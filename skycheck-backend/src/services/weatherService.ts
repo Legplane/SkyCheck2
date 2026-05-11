@@ -12,6 +12,11 @@ import {
 } from './accuWeatherService';
 
 const BASE = 'https://api.open-meteo.com/v1/forecast';
+const OLONGAPO_CITY_CENTER = {
+  lat: 14.8386,
+  lon: 120.2842,
+  name: 'Olongapo',
+};
 
 interface OpenMeteoResponse {
   current: {
@@ -430,6 +435,33 @@ function buildAccuWeatherOnlyForecast(
   return { current, hourly };
 }
 
+function applyCityRainForecast(
+  local: { current: CurrentWeather; hourly: HourlyForecast[] },
+  cityRain: { current: CurrentWeather; hourly: HourlyForecast[] },
+): { current: CurrentWeather; hourly: HourlyForecast[] } {
+  const current: CurrentWeather = {
+    ...local.current,
+    precipitationProbability: cityRain.current.precipitationProbability,
+    precipitation:            cityRain.current.precipitation,
+    weatherCode:              cityRain.current.weatherCode,
+    weatherLabel:             cityRain.current.weatherLabel,
+    weatherIcon:              cityRain.current.weatherIcon,
+  };
+
+  const hourly = local.hourly.map((localHour) => {
+    const cityHour = cityRain.hourly.find((h) => h.time === localHour.time);
+    if (!cityHour) return localHour;
+    return {
+      ...localHour,
+      weatherCode: cityHour.weatherCode,
+      weatherIcon: cityHour.weatherIcon,
+      precipitationProbability: cityHour.precipitationProbability,
+    };
+  });
+
+  return { current, hourly };
+}
+
 async function fetchAccuWeatherForecast(lat: number, lon: number, apiKey: string): Promise<{
   current: CurrentWeather;
   hourly: HourlyForecast[];
@@ -623,7 +655,7 @@ export async function fetchWeatherData(lat: number, lon: number): Promise<{
 
   if (!om && awKey) {
     console.info('[Weather] Using AccuWeather as primary fallback because Open-Meteo did not respond');
-    const awOnly = await fetchAccuWeatherForecast(lat, lon, awKey);
+    const awOnly = await fetchAccuWeatherForecast(OLONGAPO_CITY_CENTER.lat, OLONGAPO_CITY_CENTER.lon, awKey);
     if (awOnly) {
       const payload: WeatherCachePayload = {
         current: awOnly.current,
@@ -638,22 +670,31 @@ export async function fetchWeatherData(lat: number, lon: number): Promise<{
 
   if (!om) throw openMeteoError;
 
+  let rainBase = om;
+  try {
+    rainBase = await fetchOpenMeteoForecast(OLONGAPO_CITY_CENTER.lat, OLONGAPO_CITY_CENTER.lon);
+  } catch {
+    rainBase = om;
+  }
+
   if (!awKey) {
+    const cityRain = applyCityRainForecast(om, rainBase);
     const payload: WeatherCachePayload = {
-      current: om.current,
-      hourly: om.hourly,
-      weatherRisk: evaluateWeatherRisk(om.current),
+      current: cityRain.current,
+      hourly: cityRain.hourly,
+      weatherRisk: evaluateWeatherRisk(cityRain.current),
     };
     setCachedWeather(lat, lon, payload);
     return payload;
   }
 
-  const awGeo = await accuWeatherGeoposition(lat, lon, awKey);
+  const awGeo = await accuWeatherGeoposition(OLONGAPO_CITY_CENTER.lat, OLONGAPO_CITY_CENTER.lon, awKey);
   if (!awGeo?.locationKey) {
+    const cityRain = applyCityRainForecast(om, rainBase);
     const payload: WeatherCachePayload = {
-      current: om.current,
-      hourly: om.hourly,
-      weatherRisk: evaluateWeatherRisk(om.current),
+      current: cityRain.current,
+      hourly: cityRain.hourly,
+      weatherRisk: evaluateWeatherRisk(cityRain.current),
     };
     setCachedWeather(lat, lon, payload);
     return payload;
@@ -668,11 +709,19 @@ export async function fetchWeatherData(lat: number, lon: number): Promise<{
   let mergedHourly = om.hourly;
 
   if (awCur && awHr.length > 0) {
-    const merged = mergeAccuWeatherReadings(om, awCur, awHr);
+    const cityRain = mergeAccuWeatherReadings(rainBase, awCur, awHr);
+    const merged = applyCityRainForecast(om, cityRain);
     mergedCurrent = merged.current;
     mergedHourly = merged.hourly;
   } else if (awCur) {
-    mergedCurrent = mergeAccuWeatherCurrentOnly(om.current, awCur);
+    const cityCurrentRain = mergeAccuWeatherCurrentOnly(rainBase.current, awCur);
+    const merged = applyCityRainForecast(om, { current: cityCurrentRain, hourly: rainBase.hourly });
+    mergedCurrent = merged.current;
+    mergedHourly = merged.hourly;
+  } else {
+    const merged = applyCityRainForecast(om, rainBase);
+    mergedCurrent = merged.current;
+    mergedHourly = merged.hourly;
   }
 
   const placeSanitized = awGeo.placeName
