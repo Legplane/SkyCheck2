@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { signInWithPopup } from 'firebase/auth';
+import { signInWithPopup, signInWithRedirect } from 'firebase/auth';
 import { loginWithFirebase } from '../api/auth';
 import { firebaseAuth, googleProvider } from '../lib/firebase';
 import { useAuthStore } from '../store/authStore';
@@ -25,6 +25,16 @@ export default function GoogleSignInButton({ disabled = false, onError }: Google
       setAuth(accessToken, user);
       navigate('/app/dashboard', { replace: true });
     } catch (err) {
+      const code = typeof (err as { code?: unknown })?.code === 'string' ? (err as { code: string }).code : '';
+      if (code === 'auth/popup-blocked' || code === 'auth/cancelled-popup-request' || code === 'auth/operation-not-supported-in-this-environment') {
+        try {
+          await signInWithRedirect(firebaseAuth, googleProvider);
+          return;
+        } catch (redirectErr) {
+          onError?.(getApiErrorMessage(redirectErr, 'Google sign-in failed. Try again.'));
+          return;
+        }
+      }
       onError?.(getApiErrorMessage(err, 'Google sign-in failed. Try again.'));
     } finally {
       setBusy(false);

@@ -1,10 +1,13 @@
 import { useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, Outlet, useNavigate } from 'react-router-dom';
 import { QueryClient, useQuery } from '@tanstack/react-query';
 import { PersistQueryClientProvider } from '@tanstack/react-query-persist-client';
 import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persister';
+import { getRedirectResult } from 'firebase/auth';
 import { useAuthStore } from './store/authStore';
 import { useGeoStore } from './store/geoStore';
+import { loginWithFirebase } from './api/auth';
+import { firebaseAuth } from './lib/firebase';
 import BottomNav from './components/BottomNav';
 import { getAlerts } from './api';
 import type { AlertGroup } from './types';
@@ -41,6 +44,36 @@ function RequireAuth() {
   const { isAuthenticated } = useAuthStore();
   if (!isAuthenticated) return <Navigate to="/auth/login" replace />;
   return <Outlet />;
+}
+
+function AuthRedirectHandler() {
+  const navigate = useNavigate();
+  const setAuth = useAuthStore((s) => s.setAuth);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function finishRedirectLogin() {
+      try {
+        const credential = await getRedirectResult(firebaseAuth);
+        if (!credential || cancelled) return;
+        const firebaseToken = await credential.user.getIdToken();
+        const { accessToken, user } = await loginWithFirebase(firebaseToken);
+        if (cancelled) return;
+        setAuth(accessToken, user);
+        navigate('/app/dashboard', { replace: true });
+      } catch (err) {
+        console.error('[Auth] Google redirect sign-in failed:', err);
+      }
+    }
+
+    finishRedirectLogin();
+    return () => {
+      cancelled = true;
+    };
+  }, [navigate, setAuth]);
+
+  return null;
 }
 
 function AppShell() {
@@ -105,6 +138,7 @@ export default function App() {
       }}
     >
       <BrowserRouter>
+        <AuthRedirectHandler />
         <Routes>
           <Route path="/"       element={<SplashPage />} />
           <Route path="/auth">

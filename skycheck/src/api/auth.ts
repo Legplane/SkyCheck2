@@ -1,5 +1,47 @@
-import { apiClient } from './client';
+import axios from 'axios';
+import { API_BASE_URL, apiClient } from './client';
 import type { AuthResponse, User } from '../types';
+
+const AUTH_TIMEOUT_MS = 60_000;
+const AUTH_RETRY_DELAYS_MS = [900, 2_000, 4_000];
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function isRetryableAuthError(error: unknown): boolean {
+  if (!axios.isAxiosError(error)) return false;
+  const status = error.response?.status;
+  return !status || status === 408 || status === 429 || status >= 500;
+}
+
+async function wakeBackend(): Promise<void> {
+  try {
+    await fetch(`${API_BASE_URL.replace(/\/$/, '')}/health-check-server`, {
+      method: 'GET',
+      cache: 'no-store',
+    });
+  } catch {
+    // Best effort only. The real auth request below still reports the final error.
+  }
+}
+
+async function withAuthRetry<T>(action: () => Promise<T>): Promise<T> {
+  let lastError: unknown;
+  await wakeBackend();
+
+  for (let attempt = 0; attempt <= AUTH_RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      return await action();
+    } catch (err) {
+      lastError = err;
+      if (!isRetryableAuthError(err) || attempt === AUTH_RETRY_DELAYS_MS.length) break;
+      await sleep(AUTH_RETRY_DELAYS_MS[attempt]);
+    }
+  }
+
+  throw lastError;
+}
 
 // ── Register ──────────────────────────────────────────────────────
 export async function register(payload: {
@@ -17,19 +59,25 @@ export async function login(payload: {
   email: string;
   password: string;
 }): Promise<AuthResponse> {
-  const { data } = await apiClient.post<AuthResponse>('/auth/login', payload);
-  return data;
+  return withAuthRetry(async () => {
+    const { data } = await apiClient.post<AuthResponse>('/auth/login', payload, { timeout: AUTH_TIMEOUT_MS });
+    return data;
+  });
 }
 
 /** Google GIS credential JWT from `GoogleLogin` `onSuccess` */
 export async function loginWithGoogle(idToken: string): Promise<AuthResponse> {
-  const { data } = await apiClient.post<AuthResponse>('/auth/google', { idToken });
-  return data;
+  return withAuthRetry(async () => {
+    const { data } = await apiClient.post<AuthResponse>('/auth/google', { idToken }, { timeout: AUTH_TIMEOUT_MS });
+    return data;
+  });
 }
 
 export async function loginWithFirebase(idToken: string): Promise<AuthResponse> {
-  const { data } = await apiClient.post<AuthResponse>('/auth/firebase', { idToken });
-  return data;
+  return withAuthRetry(async () => {
+    const { data } = await apiClient.post<AuthResponse>('/auth/firebase', { idToken }, { timeout: AUTH_TIMEOUT_MS });
+    return data;
+  });
 }
 
 // ── Verify Email ──────────────────────────────────────────────────

@@ -20,6 +20,21 @@ export default function SignUpPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [apiError, setApiError] = useState('');
 
+  async function retryFirebaseCreateAccount(cleanEmail: string, rawPassword: string) {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await createUserWithEmailAndPassword(firebaseAuth, cleanEmail, rawPassword);
+      } catch (err) {
+        lastError = err;
+        const code = typeof (err as { code?: unknown })?.code === 'string' ? (err as { code: string }).code : '';
+        if (code !== 'auth/network-request-failed' || attempt === 2) break;
+        await new Promise((resolve) => window.setTimeout(resolve, 900 + attempt * 1_200));
+      }
+    }
+    throw lastError;
+  }
+
   function validate(): boolean {
     const errs: Record<string, string> = {};
     if (!form.name.trim()) errs.name = 'Full name is required';
@@ -39,8 +54,7 @@ export default function SignUpPage() {
 
     setIsLoading(true);
     try {
-      const credential = await createUserWithEmailAndPassword(
-        firebaseAuth,
+      const credential = await retryFirebaseCreateAccount(
         form.email.trim().toLowerCase(),
         form.password,
       );

@@ -18,6 +18,21 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
 
+  async function retryFirebaseSignIn(cleanEmail: string, rawPassword: string) {
+    let lastError: unknown;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await signInWithEmailAndPassword(firebaseAuth, cleanEmail, rawPassword);
+      } catch (err) {
+        lastError = err;
+        const code = typeof (err as { code?: unknown })?.code === 'string' ? (err as { code: string }).code : '';
+        if (code !== 'auth/network-request-failed' || attempt === 2) break;
+        await new Promise((resolve) => window.setTimeout(resolve, 900 + attempt * 1_200));
+      }
+    }
+    throw lastError;
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError('');
@@ -38,7 +53,7 @@ export default function LoginPage() {
 
     setIsLoading(true);
     try {
-      const credential = await signInWithEmailAndPassword(firebaseAuth, cleanEmail, password);
+      const credential = await retryFirebaseSignIn(cleanEmail, password);
       const firebaseToken = await credential.user.getIdToken();
       const { accessToken, user } = await loginWithFirebase(firebaseToken);
       setAuth(accessToken, user);

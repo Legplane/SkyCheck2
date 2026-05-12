@@ -4,11 +4,11 @@ import { useAuthStore } from '../store/authStore';
 // ─────────────────────────────────────────────────────────────────
 // Axios Instance
 // ─────────────────────────────────────────────────────────────────
-const BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
+export const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:3000';
 
 export const apiClient = axios.create({
-  baseURL: BASE_URL,
-  timeout: 15_000,
+  baseURL: API_BASE_URL,
+  timeout: 30_000,
   headers: { 'Content-Type': 'application/json' },
 });
 

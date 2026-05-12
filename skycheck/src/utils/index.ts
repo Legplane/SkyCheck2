@@ -141,12 +141,17 @@ export function getApiErrorMessage(error: any, fallback?: string): string {
     'auth/wrong-password': 'Invalid email or password. Try again.',
     'auth/email-already-in-use': 'This email is already registered. Try signing in instead.',
     'auth/weak-password': 'Password must be at least 8 characters.',
+    'auth/popup-blocked': 'Your browser blocked the Google sign-in window. We will try the full-page sign-in instead.',
     'auth/popup-closed-by-user': 'Google sign-in was closed before it finished.',
     'auth/unauthorized-domain': 'This website is not authorized for Firebase sign-in.',
     'auth/network-request-failed': 'Network error. Check your internet connection and try again.',
     'auth/too-many-requests': 'Too many attempts. Please wait a moment and try again.',
   };
   if (code && firebaseMessages[code]) return firebaseMessages[code];
+
+  if (code === 'ECONNABORTED' || code === 'ERR_NETWORK') {
+    return 'The connection is taking too long. Check your internet, then try again.';
+  }
 
   // If the error comes from an Axios/API response
   if (error?.response?.data?.error) {
@@ -158,6 +163,9 @@ export function getApiErrorMessage(error: any, fallback?: string): string {
   
   // If it's a standard JavaScript Error object
   if (error instanceof Error) {
+    if (/timeout|network/i.test(error.message)) {
+      return 'The connection is taking too long. Check your internet, then try again.';
+    }
     return error.message;
   }
   
