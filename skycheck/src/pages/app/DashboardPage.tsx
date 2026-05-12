@@ -16,6 +16,8 @@ import { formatUpdatedAt } from '../../utils';
 import { commuteRiskHeadline } from '../../utils/riskMessages';
 
 const CITY_WEATHER_LABEL = 'Olongapo';
+const MANUAL_REFRESH_COOLDOWN_MS = 4_000;
+const MANUAL_REFRESH_TIMEOUT_MS = 35_000;
 
 function haversineM(lat1: number, lon1: number, lat2: number, lon2: number) {
   const R = 6_371_000;
@@ -45,6 +47,7 @@ export default function DashboardPage() {
   /** ISO — set when user taps refresh and weather loads successfully ("Updated …" reflects this tap). */
   const [lastManualRefreshAt, setLastManualRefreshAt] = useState<string | null>(null);
   const refreshInFlightRef = useRef(false);
+  const lastRefreshTapRef = useRef(0);
   const gpsTapRef = useRef(0);
   const canFetchWeather = isOnline && isReady;
 
@@ -94,13 +97,18 @@ export default function DashboardPage() {
   }, [startGPS]);
 
   const refreshWeatherAndLocation = useCallback(async () => {
+    const now = Date.now();
     if (!isOnline || !isReady || refreshInFlightRef.current) return;
+    if (now - lastRefreshTapRef.current < MANUAL_REFRESH_COOLDOWN_MS) return;
+    lastRefreshTapRef.current = now;
     refreshInFlightRef.current = true;
     setLocRefreshing(true);
     try {
-      await refreshLocation();
+      await Promise.race([
+        refreshLocation(),
+        new Promise<boolean>((resolve) => window.setTimeout(() => resolve(false), MANUAL_REFRESH_TIMEOUT_MS)),
+      ]);
       const { lat: la, lon: lo } = useGeoStore.getState();
-      await qc.invalidateQueries({ queryKey: ['weather', la, lo], exact: true });
       await qc.fetchQuery({
         queryKey: ['weather', la, lo],
         queryFn:  () => fetchWeather(la, lo),

@@ -31,6 +31,7 @@ let _watchId:  number | null = null;
 let _timer:    ReturnType<typeof setTimeout> | null = null;
 let _resolved  = false;
 let _bestFix: GeolocationPosition | null = null;
+let _refreshPromise: Promise<boolean> | null = null;
 const IDEAL_ACCURACY_M = 80;
 const MAX_TRUSTED_ACCURACY_M = 300;
 const GPS_SETTLE_TIMEOUT_MS = 25_000;
@@ -193,12 +194,14 @@ export const useGeoStore = create<GeoState>((set, get) => ({
     set({ status: 'denied', reason: 'Skipped', lat: FALLBACK_LOCATION.lat, lon: FALLBACK_LOCATION.lon, accuracy: 0 });
   },
 
-  refreshLocation: () => new Promise<boolean>((resolve) => {
+  refreshLocation: () => {
+    if (_refreshPromise) return _refreshPromise;
+
     if (!('geolocation' in navigator)) {
-      resolve(false);
-      return;
+      return Promise.resolve(false);
     }
 
+    _refreshPromise = new Promise<boolean>((resolve) => {
     _resolved = false;
     _bestFix = null;
     _stopGPS();
@@ -211,7 +214,8 @@ export const useGeoStore = create<GeoState>((set, get) => ({
       if (settled) return;
       settled = true;
       if (refreshTimer) clearTimeout(refreshTimer);
-      if (!success) _stopGPS();
+      _stopGPS();
+      _refreshPromise = null;
       resolve(success);
     };
 
@@ -262,7 +266,10 @@ export const useGeoStore = create<GeoState>((set, get) => ({
       },
       { enableHighAccuracy: true, maximumAge: 0, timeout: REFRESH_SETTLE_TIMEOUT_MS },
     );
-  }),
+    });
+
+    return _refreshPromise;
+  },
 }));
 
 export const selectCoords  = (s: GeoState) => ({ lat: s.lat, lon: s.lon });
