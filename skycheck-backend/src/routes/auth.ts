@@ -256,11 +256,6 @@ router.post('/firebase', loginLimiter, async (req: Request, res: Response) => {
       return;
     }
 
-    if (!verified) {
-      res.status(403).json({ error: 'Please verify your email address before logging in.', code: 'EMAIL_UNVERIFIED' });
-      return;
-    }
-
     let user = await prisma.user.findUnique({ where: { email } });
     if (!user) {
       user = await prisma.user.create({
@@ -269,7 +264,7 @@ router.post('/firebase', loginLimiter, async (req: Request, res: Response) => {
           email,
           passHash: null,
           googleId: provider === 'google.com' ? decoded.uid : null,
-          isVerified: true,
+          isVerified: verified,
         },
       });
     } else {
@@ -282,7 +277,7 @@ router.post('/firebase', loginLimiter, async (req: Request, res: Response) => {
       } = {};
 
       if (!user.name?.trim()) data.name = displayName;
-      if (!user.isVerified) {
+      if (verified && !user.isVerified) {
         data.isVerified = true;
         data.verifyTok = null;
         data.verifyExp = null;
@@ -307,7 +302,7 @@ router.post('/firebase', loginLimiter, async (req: Request, res: Response) => {
         id: user.id,
         name: user.name,
         email: user.email,
-        isVerified: true,
+        isVerified: verified || user.isVerified,
         preferences: {
           morningAlerts: user.morningAlerts,
           alertSound: user.alertSound,

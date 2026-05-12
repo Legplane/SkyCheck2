@@ -25,7 +25,9 @@ apiClient.interceptors.request.use((config) => {
 apiClient.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
-    if (error.response?.status === 401) {
+    const requestUrl = error.config?.url ?? '';
+    const isAuthRequest = requestUrl.startsWith('/auth/');
+    if (error.response?.status === 401 && !isAuthRequest) {
       useAuthStore.getState().clearAuth();
       // Hard redirect to login
       window.location.href = '/auth/login';

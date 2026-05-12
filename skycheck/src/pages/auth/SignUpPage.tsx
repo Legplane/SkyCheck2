@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { User, Mail, Lock, Eye, EyeOff, ChevronLeft } from 'lucide-react';
 import { createUserWithEmailAndPassword, sendEmailVerification, updateProfile } from 'firebase/auth';
+import { loginWithFirebase } from '../../api/auth';
 import { firebaseAuth } from '../../lib/firebase';
 import { useAuthStore } from '../../store/authStore';
 import GoogleSignInButton from '../../components/GoogleSignInButton';
@@ -10,7 +11,7 @@ import PasswordStrengthBar from '../../components/PasswordStrengthBar';
 
 export default function SignUpPage() {
   const navigate = useNavigate();
-  const { setPendingVerifyEmail } = useAuthStore();
+  const { setAuth, setPendingVerifyEmail } = useAuthStore();
 
   const [form, setForm] = useState({ name: '', email: '', password: '', confirm: '' });
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -46,9 +47,14 @@ export default function SignUpPage() {
       await updateProfile(credential.user, { displayName: form.name.trim() });
       await sendEmailVerification(credential.user, {
         url: `${window.location.origin}/auth/login`,
+      }).catch((err) => {
+        console.warn('[Auth] Verification email could not be sent:', err);
       });
       setPendingVerifyEmail(form.email);
-      navigate('/auth/verify');
+      const firebaseToken = await credential.user.getIdToken(true);
+      const { accessToken, user } = await loginWithFirebase(firebaseToken);
+      setAuth(accessToken, user);
+      navigate('/app/dashboard', { replace: true });
     } catch (err) {
       setApiError(getApiErrorMessage(err, 'Registration failed. Please try again.'));
     } finally {

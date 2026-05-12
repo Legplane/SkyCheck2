@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Mail, Lock, Eye, EyeOff } from 'lucide-react';
-import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 import { loginWithFirebase } from '../../api/auth';
 import { firebaseAuth } from '../../lib/firebase';
 import { useAuthStore } from '../../store/authStore';
@@ -39,11 +39,6 @@ export default function LoginPage() {
     setIsLoading(true);
     try {
       const credential = await signInWithEmailAndPassword(firebaseAuth, cleanEmail, password);
-      if (!credential.user.emailVerified) {
-        await signOut(firebaseAuth);
-        setError('Please verify your email address before logging in.');
-        return;
-      }
       const firebaseToken = await credential.user.getIdToken();
       const { accessToken, user } = await loginWithFirebase(firebaseToken);
       setAuth(accessToken, user);
