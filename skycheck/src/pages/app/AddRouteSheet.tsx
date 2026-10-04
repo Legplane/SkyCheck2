@@ -9,6 +9,7 @@ import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import { formatDistance, formatDuration, getApiErrorMessage } from '../../utils';
 import MapView from '../../components/MapView';
 import FareEstimateList from '../../components/FareEstimateList';
+import { isWithinCoverage, COVERAGE_OUT_OF_AREA_MESSAGE, COVERAGE_AREA_LABEL } from '../../constants/coverage';
 
 interface AddRouteSheetProps {
   editRoute?: Route | null;
@@ -52,6 +53,19 @@ export default function AddRouteSheet({ editRoute, onClose, onSaved }: AddRouteS
 
   const startRef = useRef<HTMLInputElement>(null);
 
+  // A route saved before the area limit existed may sit outside the coverage
+  // area. Show it, but require it to be changed before it can be saved.
+  const legacyOutsideCoverage = useRef(
+    !!editRoute && !(
+      isWithinCoverage(editRoute.startLat, editRoute.startLon) &&
+      isWithinCoverage(editRoute.destLat, editRoute.destLon)
+    ),
+  ).current;
+
+  const startOutside = !!start.selected && !isWithinCoverage(start.selected.lat, start.selected.lon);
+  const destOutside  = !!dest.selected  && !isWithinCoverage(dest.selected.lat,  dest.selected.lon);
+  const outsideCoverage = startOutside || destOutside;
+
   // ── Search start ──────────────────────────────────────────────────
   useEffect(() => {
     if (!isOnline || !debStartQuery || debStartQuery.length < 3 || start.selected) return;
@@ -74,6 +88,11 @@ export default function AddRouteSheet({ editRoute, onClose, onSaved }: AddRouteS
   useEffect(() => {
     if (!start.selected || !dest.selected) { setPreview(null); return; }
     if (!isOnline) return;
+    if (!isWithinCoverage(start.selected.lat, start.selected.lon) ||
+        !isWithinCoverage(dest.selected.lat, dest.selected.lon)) {
+      setPreview(null);
+      return;
+    }
     setIsLoadingPreview(true);
     previewRoute({ startLat: start.selected.lat, startLon: start.selected.lon, destLat: dest.selected.lat, destLon: dest.selected.lon })
       .then(setPreview)
@@ -83,6 +102,10 @@ export default function AddRouteSheet({ editRoute, onClose, onSaved }: AddRouteS
 
   function buildPayload(): CreateRoutePayload {
     if (!start.selected || !dest.selected) throw new Error('Please select start and destination.');
+    if (!isWithinCoverage(start.selected.lat, start.selected.lon) ||
+        !isWithinCoverage(dest.selected.lat, dest.selected.lon)) {
+      throw new Error(COVERAGE_OUT_OF_AREA_MESSAGE);
+    }
     return {
       label: label.trim() || undefined,
       startAddress: shortenAddress(start.selected.displayName),
@@ -161,8 +184,21 @@ export default function AddRouteSheet({ editRoute, onClose, onSaved }: AddRouteS
             </div>
           )}
 
+          {legacyOutsideCoverage && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-sm">
+              This route is outside the SkyCheck coverage area ({COVERAGE_AREA_LABEL}). Change the start or destination to a place inside the area before saving.
+            </div>
+          )}
+
+          {!legacyOutsideCoverage && outsideCoverage && (
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-sm">
+              {COVERAGE_OUT_OF_AREA_MESSAGE}
+            </div>
+          )}
+
           {/* Map Preview */}
           <MapView
+            restrictToCoverage={!legacyOutsideCoverage}
             start={start.selected ? { lat: start.selected.lat, lon: start.selected.lon } : undefined}
             destination={dest.selected ? { lat: dest.selected.lat, lon: dest.selected.lon } : undefined}
             waypoints={preview?.waypoints}
@@ -313,7 +349,7 @@ export default function AddRouteSheet({ editRoute, onClose, onSaved }: AddRouteS
           {/* Save CTA */}
           <button
             onClick={handleSave}
-            disabled={isPending || !isOnline || !start.selected || !dest.selected}
+            disabled={isPending || !isOnline || !start.selected || !dest.selected || outsideCoverage}
             className="w-full py-3.5 bg-primary-600 text-white font-semibold rounded-xl hover:bg-primary-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 mt-2"
           >
             {isPending

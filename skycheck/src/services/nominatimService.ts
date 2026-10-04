@@ -1,8 +1,10 @@
 import type { NominatimResult } from '../types';
+import { COVERAGE_NOMINATIM_VIEWBOX, isWithinCoverage } from '../constants/coverage';
 
 // ─────────────────────────────────────────────────────────────────
 // Nominatim Geocoding Service
-// Free OSM geocoding. Limit to PH (countrycodes=ph).
+// Free OSM geocoding. Limited to PH and bounded to the SkyCheck
+// service area (Olongapo, Subic, Bataan) via viewbox + bounded=1.
 // Usage policy: max 1 request/second — use 300ms debounce on input.
 // ─────────────────────────────────────────────────────────────────
 
@@ -17,6 +19,8 @@ export async function searchAddress(query: string): Promise<NominatimResult[]> {
     format: 'json',
     limit: '5',
     countrycodes: 'ph',
+    viewbox: COVERAGE_NOMINATIM_VIEWBOX,
+    bounded: '1',
     addressdetails: '1',
   });
 
@@ -28,7 +32,10 @@ export async function searchAddress(query: string): Promise<NominatimResult[]> {
 
   const raw = await response.json();
 
-  return raw.map((item: {
+  return raw
+    .filter((item: { lat: string; lon: string }) =>
+      isWithinCoverage(parseFloat(item.lat), parseFloat(item.lon)))
+    .map((item: {
     place_id: number;
     display_name: string;
     lat: string;

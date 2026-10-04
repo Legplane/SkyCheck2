@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { MapContainer, TileLayer, Marker, Polyline, useMap } from 'react-leaflet';
 import L from 'leaflet';
+import { COVERAGE_LEAFLET_BOUNDS } from '../constants/coverage';
 
 // Fix default Leaflet icon issue with Vite bundler
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
@@ -43,9 +44,11 @@ interface MapViewProps {
   destination?: { lat: number; lon: number };
   waypoints?: [number, number][];  // decoded from ORS geometry
   className?: string;
+  /** Lock panning to the SkyCheck service area. Default: true. Read once on mount. */
+  restrictToCoverage?: boolean;
 }
 
-export default function MapView({ start, destination, waypoints, className }: MapViewProps) {
+export default function MapView({ start, destination, waypoints, className, restrictToCoverage = true }: MapViewProps) {
   const MAPTILER_KEY = import.meta.env.VITE_MAPTILER_KEY;
 
   // Default center: Subic, PH
@@ -70,6 +73,9 @@ export default function MapView({ start, destination, waypoints, className }: Ma
         zoom={15}
         style={{ height: '100%', width: '100%' }}
         zoomControl={false}
+        maxBounds={restrictToCoverage ? COVERAGE_LEAFLET_BOUNDS : undefined}
+        maxBoundsViscosity={1.0}
+        minZoom={9}
         scrollWheelZoom={false}
       >
         <TileLayer url={tileUrl} attribution={attribution} />

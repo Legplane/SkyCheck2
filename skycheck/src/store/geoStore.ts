@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { isWithinCoverage, COVERAGE_AREA_LABEL } from '../constants/coverage';
 
 // ─────────────────────────────────────────────────────────────────
 // Global GPS Store — singleton, survives page navigation
@@ -37,6 +38,7 @@ const MAX_TRUSTED_ACCURACY_M = 300;
 const GPS_SETTLE_TIMEOUT_MS = 25_000;
 const PRECISE_LOCATION_FALLBACK_REASON = 'Precise location unavailable. Showing Olongapo. For better accuracy, use mobile GPS.';
 const REFRESH_SETTLE_TIMEOUT_MS = 18_000;
+const OUTSIDE_COVERAGE_REASON = `You appear to be outside ${COVERAGE_AREA_LABEL}, which is the area SkyCheck covers.`;
 
 function _distanceM(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6_371_000;
@@ -53,8 +55,20 @@ function _isBetterFix(pos: GeolocationPosition, current: GeolocationPosition | n
   return pos.coords.accuracy < current.coords.accuracy;
 }
 
-function _applyFix(pos: GeolocationPosition, set: (state: Partial<GeoState>) => void) {
+// Returns true when the fix was applied as a live location, false when it was
+// outside the service area and the Olongapo fallback was used instead.
+function _applyFix(pos: GeolocationPosition, set: (state: Partial<GeoState>) => void): boolean {
   const { latitude, longitude, accuracy } = pos.coords;
+  if (!isWithinCoverage(latitude, longitude)) {
+    set({
+      status:   'denied',
+      reason:   OUTSIDE_COVERAGE_REASON,
+      lat:      FALLBACK_LOCATION.lat,
+      lon:      FALLBACK_LOCATION.lon,
+      accuracy: Math.round(accuracy),
+    });
+    return false;
+  }
   set({
     status:   'granted',
     lat:      latitude,
@@ -62,6 +76,7 @@ function _applyFix(pos: GeolocationPosition, set: (state: Partial<GeoState>) => 
     accuracy: Math.round(accuracy),
     reason:   '',
   });
+  return true;
 }
 
 function _clearTimer() {
@@ -221,8 +236,7 @@ export const useGeoStore = create<GeoState>((set, get) => ({
 
     refreshTimer = setTimeout(() => {
       if (_bestFix && _bestFix.coords.accuracy <= MAX_TRUSTED_ACCURACY_M) {
-        _applyFix(_bestFix, set);
-        finish(true);
+        finish(_applyFix(_bestFix, set));
       } else {
         _applyFallback(set, PRECISE_LOCATION_FALLBACK_REASON, _bestFix ? Math.round(_bestFix.coords.accuracy) : 0);
         finish(false);
@@ -233,8 +247,7 @@ export const useGeoStore = create<GeoState>((set, get) => ({
       (pos) => {
         if (_isBetterFix(pos, _bestFix)) _bestFix = pos;
         if (pos.coords.accuracy <= MAX_TRUSTED_ACCURACY_M) {
-          _applyFix(pos, set);
-          finish(true);
+          finish(_applyFix(pos, set));
         } else {
           set({ reason: PRECISE_LOCATION_FALLBACK_REASON, accuracy: Math.round(pos.coords.accuracy) });
         }
@@ -254,8 +267,7 @@ export const useGeoStore = create<GeoState>((set, get) => ({
       (pos) => {
         if (_isBetterFix(pos, _bestFix)) _bestFix = pos;
         if (pos.coords.accuracy <= MAX_TRUSTED_ACCURACY_M) {
-          _applyFix(pos, set);
-          finish(true);
+          finish(_applyFix(pos, set));
         }
       },
       () => {

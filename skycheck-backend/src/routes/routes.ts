@@ -8,6 +8,7 @@ import { fetchRouteTrafficLevel } from '../services/trafficService';
 import { evaluateRouteFloodRisk } from '../services/floodService';
 import { estimateFareOptions, estimateMaximFare } from '../utils/fareEstimates';
 import { RISK } from '../constants/risk';
+import { routeWithinCoverage, COVERAGE_ERROR_MESSAGE } from '../constants/coverage';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -211,6 +212,11 @@ router.post('/preview', requireAuth, async (req: Request, res: Response) => {
       return;
     }
 
+    if (!routeWithinCoverage(startLat, startLon, destLat, destLon)) {
+      res.status(400).json({ error: COVERAGE_ERROR_MESSAGE, code: 'OUT_OF_COVERAGE' });
+      return;
+    }
+
     const calc = await calculateRoute(startLat, startLon, destLat, destLon);
 
     res.json({
@@ -262,6 +268,11 @@ router.post('/', requireAuth, async (req: Request, res: Response) => {
 
     if (!startAddress || !startLat || !startLon || !destAddress || !destLat || !destLon || !departTime) {
       res.status(400).json({ error: 'All location fields and departure time are required.' });
+      return;
+    }
+
+    if (!routeWithinCoverage(startLat, startLon, destLat, destLon)) {
+      res.status(400).json({ error: COVERAGE_ERROR_MESSAGE, code: 'OUT_OF_COVERAGE' });
       return;
     }
 
@@ -332,6 +343,13 @@ router.patch('/:id', requireAuth, async (req: Request, res: Response) => {
     const newStartLon = startLon ?? existing.startLon;
     const newDestLat  = destLat  ?? existing.destLat;
     const newDestLon  = destLon  ?? existing.destLon;
+
+    // Always validate the resulting route, so legacy routes saved outside
+    // the service area must be moved inside it before they can be updated.
+    if (!routeWithinCoverage(newStartLat, newStartLon, newDestLat, newDestLon)) {
+      res.status(400).json({ error: COVERAGE_ERROR_MESSAGE, code: 'OUT_OF_COVERAGE' });
+      return;
+    }
 
     // Re-calculate if coordinates changed
     let distanceKm  = existing.distanceKm;
