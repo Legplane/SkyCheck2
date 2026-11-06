@@ -4,6 +4,7 @@ import { fetchWeatherData } from '../services/weatherService';
 import { evaluateCombinedRisk } from '../services/combinedRiskService';
 import { getCommuteTips } from '../services/weatherService';
 import { maybeCreateCurrentWeatherAlert } from '../services/weatherAlertService';
+import { isWithinCoverage, COVERAGE_WEATHER_ERROR_MESSAGE } from '../constants/coverage';
 
 const router = Router();
 const OLONGAPO_CITY_CENTER = {
@@ -28,9 +29,8 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
       res.status(400).json({ error: 'Valid lat and lon query parameters are required.' });
       return;
     }
-    if (lat < 4 || lat > 21 || lon < 116 || lon > 127) {
-      // Loose bounding box for the Philippines
-      res.status(400).json({ error: 'Coordinates appear to be outside the Philippines.' });
+    if (!isWithinCoverage(lat, lon)) {
+      res.status(400).json({ error: COVERAGE_WEATHER_ERROR_MESSAGE, code: 'OUT_OF_COVERAGE' });
       return;
     }
 

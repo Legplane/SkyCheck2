@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/auth';
 import { evaluateGoNoGo } from '../services/goNoGoEngine';
 import { fetchWeatherData, effectiveWindKmH } from '../services/weatherService';
 import { evaluateCombinedRisk, evaluateRouteCombinedRisk } from '../services/combinedRiskService';
+import { isWithinCoverage, COVERAGE_WEATHER_ERROR_MESSAGE } from '../constants/coverage';
 import { manilaCheckDate } from '../utils/manilaDate';
 
 const router = Router();
@@ -88,6 +89,10 @@ router.post('/evaluate', requireAuth, async (req: Request, res: Response) => {
 
     if (!lat || !lon) {
       res.status(400).json({ error: 'lat and lon are required.' });
+      return;
+    }
+    if (!isWithinCoverage(lat, lon)) {
+      res.status(400).json({ error: COVERAGE_WEATHER_ERROR_MESSAGE, code: 'OUT_OF_COVERAGE' });
       return;
     }
 

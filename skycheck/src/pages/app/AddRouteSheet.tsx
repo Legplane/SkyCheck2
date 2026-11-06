@@ -22,6 +22,8 @@ interface LocationField {
   selected: NominatimResult | null;
   suggestions: NominatimResult[];
   isSearching: boolean;
+  /** True when a search finished and nothing inside the coverage area matched. */
+  noResults?: boolean;
 }
 
 export default function AddRouteSheet({ editRoute, onClose, onSaved }: AddRouteSheetProps) {
@@ -71,7 +73,7 @@ export default function AddRouteSheet({ editRoute, onClose, onSaved }: AddRouteS
     if (!isOnline || !debStartQuery || debStartQuery.length < 3 || start.selected) return;
     setStart(s => ({ ...s, isSearching: true }));
     searchAddress(debStartQuery)
-      .then(results => setStart(s => ({ ...s, suggestions: results, isSearching: false })))
+      .then(results => setStart(s => ({ ...s, suggestions: results, isSearching: false, noResults: results.length === 0 })))
       .catch(() => setStart(s => ({ ...s, isSearching: false })));
   }, [debStartQuery, isOnline, start.selected]);
 
@@ -80,7 +82,7 @@ export default function AddRouteSheet({ editRoute, onClose, onSaved }: AddRouteS
     if (!isOnline || !debDestQuery || debDestQuery.length < 3 || dest.selected) return;
     setDest(d => ({ ...d, isSearching: true }));
     searchAddress(debDestQuery)
-      .then(results => setDest(d => ({ ...d, suggestions: results, isSearching: false })))
+      .then(results => setDest(d => ({ ...d, suggestions: results, isSearching: false, noResults: results.length === 0 })))
       .catch(() => setDest(d => ({ ...d, isSearching: false })));
   }, [debDestQuery, isOnline, dest.selected]);
 
@@ -215,7 +217,7 @@ export default function AddRouteSheet({ editRoute, onClose, onSaved }: AddRouteS
                 type="text"
                 placeholder="e.g. Sto. Niño, Olongapo"
                 value={start.query}
-                onChange={e => setStart(s => ({ ...s, query: e.target.value, selected: null }))}
+                onChange={e => setStart(s => ({ ...s, query: e.target.value, selected: null, noResults: false }))}
                 className="w-full pl-9 pr-4 py-3 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary-600"
               />
               {start.isSearching && (
@@ -224,6 +226,11 @@ export default function AddRouteSheet({ editRoute, onClose, onSaved }: AddRouteS
                 </div>
               )}
             </div>
+            {start.noResults && !start.selected && !start.isSearching && (
+              <p className="mt-1 text-xs text-amber-700">
+                No match inside {COVERAGE_AREA_LABEL}. Try a nearby landmark or barangay.
+              </p>
+            )}
             {/* Suggestions */}
             {start.suggestions.length > 0 && !start.selected && (
               <ul className="mt-1 bg-white border border-gray-200 rounded-xl shadow-card-lg overflow-hidden">
@@ -251,7 +258,7 @@ export default function AddRouteSheet({ editRoute, onClose, onSaved }: AddRouteS
                 type="text"
                 placeholder="e.g. Gordon College"
                 value={dest.query}
-                onChange={e => setDest(d => ({ ...d, query: e.target.value, selected: null }))}
+                onChange={e => setDest(d => ({ ...d, query: e.target.value, selected: null, noResults: false }))}
                 className="w-full pl-9 pr-4 py-3 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary-600"
               />
               {dest.isSearching && (
@@ -260,6 +267,11 @@ export default function AddRouteSheet({ editRoute, onClose, onSaved }: AddRouteS
                 </div>
               )}
             </div>
+            {dest.noResults && !dest.selected && !dest.isSearching && (
+              <p className="mt-1 text-xs text-amber-700">
+                No match inside {COVERAGE_AREA_LABEL}. Try a nearby landmark or barangay.
+              </p>
+            )}
             {dest.suggestions.length > 0 && !dest.selected && (
               <ul className="mt-1 bg-white border border-gray-200 rounded-xl shadow-card-lg overflow-hidden">
                 {dest.suggestions.map(r => (

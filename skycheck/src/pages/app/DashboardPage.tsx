@@ -4,7 +4,8 @@ import { RefreshCw, MapPin, Bell, Menu, Navigation, AlertTriangle, ShieldCheck, 
 import { Link } from 'react-router-dom';
 import { fetchWeather } from '../../api';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
-import { useGeoStore, selectIsLive, selectIsReady } from '../../store/geoStore';
+import { useGeoStore, selectIsLive, selectIsReady, accuracyQuality } from '../../store/geoStore';
+import LocationPicker from '../../components/LocationPicker';
 import OfflineBanner from '../../components/OfflineBanner';
 import RiskBadge from '../../components/RiskBadge';
 import SubRiskRow from '../../components/SubRiskRow';
@@ -13,6 +14,7 @@ import HourlyForecastItem from '../../components/HourlyForecastItem';
 import { DashboardSkeleton } from '../../components/SkeletonLoader';
 import { RISK_BG_LIGHT, RISK_TEXT_COLORS } from '../../constants/risk';
 import { formatUpdatedAt } from '../../utils';
+import { findBestCachedWeather, ageMinutes } from '../../utils/offline';
 import { commuteRiskHeadline } from '../../utils/riskMessages';
 
 const CITY_WEATHER_LABEL = 'Olongapo';
@@ -40,6 +42,8 @@ export default function DashboardPage() {
   const isLive    = useGeoStore(selectIsLive);
   const isReady   = useGeoStore(selectIsReady);
   const reason    = useGeoStore((s) => s.reason);
+  const source    = useGeoStore((s) => s.source);
+  const [showPicker, setShowPicker] = useState(false);
   const startGPS         = useGeoStore((s) => s.startGPS);
   const refreshLocation  = useGeoStore((s) => s.refreshLocation);
 
@@ -63,8 +67,8 @@ export default function DashboardPage() {
     prevCoordsRef.current = { lat, lon };
   }, [lat, lon, status, qc]);
 
-  const cachedWeather = qc.getQueriesData<Awaited<ReturnType<typeof fetchWeather>>>({ queryKey: ['weather'] })
-    .find(([, cached]) => Boolean(cached))?.[1];
+  const bestCached = findBestCachedWeather(qc, lat, lon);
+  const cachedWeather = bestCached?.snapshot;
 
   const { data: liveData, isLoading, isFetching, dataUpdatedAt } = useQuery({
     queryKey: ['weather', lat, lon],
@@ -143,6 +147,11 @@ export default function DashboardPage() {
             className="relative z-20 min-h-12 min-w-44 px-6 py-3 bg-primary-600 text-white rounded-xl text-sm font-semibold shadow-card touch-manipulation hover:bg-primary-700 active:scale-[0.98] transition">
             {status === 'requesting' ? 'Checking GPS...' : 'Allow GPS Access'}
           </button>
+          <button type="button" onClick={() => setShowPicker(true)}
+            className="text-xs font-semibold text-primary-600 underline">
+            Or set my location on the map
+          </button>
+          {showPicker && <LocationPicker onClose={() => setShowPicker(false)} />}
         </div>
       </div>
     );
@@ -154,7 +163,7 @@ export default function DashboardPage() {
       <div className="flex flex-col min-h-screen w-full max-w-6xl mx-auto bg-gray-50">
         <AppHeader />
         {status === 'denied' && (
-          <LocationBanner reason={reason} onRetry={handleStartGPS} />
+          <LocationBanner reason={reason} onRetry={handleStartGPS} onPin={() => setShowPicker(true)} />
         )}
         <DashboardSkeleton />
       </div>
@@ -183,6 +192,7 @@ export default function DashboardPage() {
   }
 
   const { current, hourly, risk, commuteTips, location } = data;
+  const quality = accuracyQuality(accuracy);
   const hasTrustedGps = status === 'granted';
   const displayLocation = hasTrustedGps ? (location || CITY_WEATHER_LABEL) : CITY_WEATHER_LABEL;
 
@@ -193,8 +203,8 @@ export default function DashboardPage() {
 
   return (
     <div className="flex flex-col min-h-screen w-full max-w-6xl mx-auto bg-gray-50 pb-20">
-      {!isOnline && <OfflineBanner cachedAt={updatedLabel} />}
-      {status === 'denied' && <LocationBanner reason={reason} onRetry={handleStartGPS} />}
+      {!isOnline && <OfflineBanner cachedAt={updatedLabel} ageMin={dataUpdatedAt ? ageMinutes(dataUpdatedAt) : bestCached ? ageMinutes(bestCached.updatedAt) : undefined} />}
+      {status === 'denied' && <LocationBanner reason={reason} onRetry={handleStartGPS} onPin={() => setShowPicker(true)} />}
 
       <AppHeader />
 
@@ -209,12 +219,29 @@ export default function DashboardPage() {
               </span>
             </div>
             <div className="mt-1 flex flex-wrap items-center gap-1.5">
-              <span className="shrink-0 text-[11px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded-full font-medium inline-flex items-center gap-0.5">
-                <Navigation size={9} /> Live
+              <span className={`shrink-0 text-[11px] px-1.5 py-0.5 rounded-full font-medium inline-flex items-center gap-0.5 ${
+                !hasTrustedGps ? 'text-gray-500 bg-gray-100'
+                : source === 'manual' || source === 'last-known' ? 'text-purple-700 bg-purple-50'
+                : quality === 'excellent' || quality === 'good' ? 'text-green-700 bg-green-50'
+                : 'text-amber-700 bg-amber-50'
+              }`}>
+                <Navigation size={9} />
+                {!hasTrustedGps ? 'Default area'
+                  : source === 'manual' ? 'Manual pin'
+                  : source === 'last-known' ? 'Last known'
+                  : accuracy > 0 ? `Live ±${accuracy}m` : 'Live'}
               </span>
-              {hasTrustedGps && accuracy > 0 && (
-                <span className="text-[11px] text-gray-400">GPS pin identifies your barangay/street</span>
+              {hasTrustedGps && source === 'gps' && quality !== 'none' && (
+                <span className="text-[11px] text-gray-400">
+                  {quality === 'excellent' || quality === 'good'
+                    ? 'GPS pin identifies your barangay/street'
+                    : 'Weak GPS — location may be off by a few blocks'}
+                </span>
               )}
+              <button type="button" onClick={() => setShowPicker(true)}
+                className="text-[11px] font-semibold text-primary-600 underline">
+                Set on map
+              </button>
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
@@ -321,11 +348,12 @@ export default function DashboardPage() {
 
         <div className="h-4" />
       </div>
+      {showPicker && <LocationPicker onClose={() => setShowPicker(false)} />}
     </div>
   );
 }
 
-function LocationBanner({ reason, onRetry }: { reason: string; onRetry: () => void }) {
+function LocationBanner({ reason, onRetry, onPin }: { reason: string; onRetry: () => void; onPin: () => void }) {
   return (
     <div className="bg-amber-50 border-b border-amber-200 px-4 py-2.5 flex items-start gap-2">
       <AlertTriangle size={14} className="text-amber-600 shrink-0" />
@@ -340,6 +368,12 @@ function LocationBanner({ reason, onRetry }: { reason: string; onRetry: () => vo
         onPointerUp={onRetry}
         className="relative z-20 min-h-10 px-2 text-xs font-semibold text-amber-700 underline shrink-0 touch-manipulation">
         Allow GPS
+      </button>
+      <button
+        type="button"
+        onClick={onPin}
+        className="relative z-20 min-h-10 px-2 text-xs font-semibold text-amber-700 underline shrink-0 touch-manipulation">
+        Pin on map
       </button>
     </div>
   );

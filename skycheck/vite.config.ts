@@ -61,6 +61,17 @@ export default defineConfig({
             },
           },
           {
+            // OpenStreetMap tiles (used when no MapTiler key is set) — keep
+            // viewed map areas available offline.
+            urlPattern: /^https:\/\/[abc]\.tile\.openstreetmap\.org\//,
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'osm-tiles',
+              expiration: { maxEntries: 600, maxAgeSeconds: 14 * 86400 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+          {
             urlPattern: ({ url }) =>
               url.pathname.startsWith('/api/') || url.port === '3000',
             handler: 'NetworkFirst',

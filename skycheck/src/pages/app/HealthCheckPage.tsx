@@ -9,6 +9,7 @@ import { submitHealthCheck, getTodayHealthCheck } from '../../api';
 import type { HealthCheck, HealthCheckPayload } from '../../types';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import { getApiErrorMessage } from '../../utils';
+import { manilaToday, isHealthCheckForToday, queuePendingHealth } from '../../utils/offline';
 
 type Feeling = 'well' | 'mild' | 'sick' | 'severe';
 
@@ -73,13 +74,16 @@ export default function HealthCheckPage() {
   const [error, setError]       = useState('');
 
   // Check if already submitted today
-  const { data: existing, isLoading: checkLoading } = useQuery({
+  const { data: existingRaw, isLoading: checkLoading } = useQuery({
     queryKey: ['health-today'],
     queryFn:  getTodayHealthCheck,
     initialData: !isOnline ? qc.getQueryData<HealthCheck>(['health-today']) : undefined,
     staleTime: 5 * 60 * 1000,
     enabled: isOnline,
   });
+
+  // A cached record from a previous day must not count as today's check.
+  const existing = isHealthCheckForToday(existingRaw) ? existingRaw : null;
 
   // Go/No-Go → "Update Health Check" passes state so we open the form even if the summary link is hard to tap.
   useEffect(() => {
@@ -118,10 +122,11 @@ export default function HealthCheckPage() {
       ...form,
       id: `offline-${now.toISOString()}`,
       userId: 'offline',
-      checkDate: now.toISOString().slice(0, 10),
+      checkDate: manilaToday(now),
       createdAt: now.toISOString(),
     };
     qc.setQueryData(['health-today'], offlineRecord);
+    queuePendingHealth(form); // synced automatically when internet returns
     qc.removeQueries({ queryKey: ['go-no-go'] });
     setEditingToday(false);
     setSubmitted(true);

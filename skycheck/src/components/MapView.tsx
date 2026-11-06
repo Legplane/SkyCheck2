@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
-import { MapContainer, TileLayer, Marker, Polyline, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Polyline, Polygon, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { COVERAGE_LEAFLET_BOUNDS } from '../constants/coverage';
+import { COVERAGE_LEAFLET_BOUNDS, COVERAGE_OUTLINE } from '../constants/coverage';
 
 // Fix default Leaflet icon issue with Vite bundler
 delete (L.Icon.Default.prototype as unknown as Record<string, unknown>)._getIconUrl;
@@ -79,6 +79,14 @@ export default function MapView({ start, destination, waypoints, className, rest
         scrollWheelZoom={false}
       >
         <TileLayer url={tileUrl} attribution={attribution} />
+
+        {restrictToCoverage && (
+          <Polygon
+            positions={COVERAGE_OUTLINE}
+            interactive={false}
+            pathOptions={{ color: '#1A56C4', weight: 1.5, dashArray: '6 6', fillOpacity: 0.03 }}
+          />
+        )}
 
         {positions.length > 0 && <FitBounds positions={positions} />}
 

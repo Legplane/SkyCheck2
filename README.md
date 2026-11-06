@@ -155,6 +155,15 @@ When offline, users can:
 - Start a health check locally
 - Generate a Go / No-Go estimate using cached weather and the local health check
 
+Offline estimate accuracy:
+
+- Uses the cached hourly forecast for the next ~3 hours, not just the moment it was cached
+- Shows how old the data is and a High / Medium / Low confidence label
+- Never returns a plain GO on data older than 6 hours
+- Warns when the cached weather was fetched far from the user's current location
+- Includes last-known saved-route risk and cached school / government announcements
+- A health check filled in offline is queued and uploaded automatically when internet returns
+
 When offline, users cannot:
 
 - Add, edit, or delete routes
@@ -174,6 +183,22 @@ If precise tracking fails, is blocked, or is unavailable on a PC/laptop, the app
 - The user is notified that precise location could not be found and that mobile GPS is recommended for better accuracy.
 
 Mobile devices are generally more accurate because they usually have real GPS hardware. PC/laptop browsers often depend on Wi-Fi or IP-based location, which can be rough or unavailable.
+
+## Coverage Area
+
+SkyCheck only serves **Olongapo, Subic and Bataan**. The boundary is a polygon
+(`COVERAGE_POLYGON` in `skycheck/src/constants/coverage.ts` and
+`skycheck-backend/src/constants/coverage.ts` - keep both identical). It is enforced on:
+address search, route preview / create / edit, `/weather`, and `/health/evaluate`.
+Anything outside returns `400 OUT_OF_COVERAGE`. The map shows the area as a dashed outline.
+
+## GPS Accuracy
+
+- Stale (>30 s) and IP-grade (>2 km) fixes are ignored; teleport jumps are filtered.
+- Recent fixes are blended by inverse-variance weight, so the pin steadies while standing still.
+- The dashboard shows `Live ±Xm`; weak GPS is flagged.
+- The last good fix is kept for 6 h and used if GPS fails, instead of the generic Olongapo default.
+- Users can drop a manual pin on the map ("Set on map"); only points inside the coverage area are accepted.
 
 ## Documentation
 

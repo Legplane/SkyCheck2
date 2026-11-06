@@ -6,6 +6,7 @@ import { createSyncStoragePersister } from '@tanstack/query-sync-storage-persist
 import { getRedirectResult } from 'firebase/auth';
 import { useAuthStore } from './store/authStore';
 import { useGeoStore } from './store/geoStore';
+import { useOfflineSync } from './hooks/useOfflineSync';
 import { loginWithFirebase } from './api/auth';
 import { firebaseAuth } from './lib/firebase';
 import BottomNav from './components/BottomNav';
@@ -78,6 +79,7 @@ function AuthRedirectHandler() {
 
 function AppShell() {
   const startGPS = useGeoStore((s) => s.startGPS);
+  useOfflineSync();
 
   // Only auto-start when the browser already has permission. If permission is
   // still in "prompt" state, the dashboard button becomes the user-triggered
