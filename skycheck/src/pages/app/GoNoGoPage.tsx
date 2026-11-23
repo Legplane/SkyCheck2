@@ -6,7 +6,9 @@ import {
   XCircle, Shield, Thermometer, Car, CloudRain,
   Waves, Building2, Landmark, Activity, Sun
 } from 'lucide-react';
+import axios from 'axios';
 import { evaluateGoNoGo, getRoutes, getTodayHealthCheck } from '../../api';
+import { API_BASE_URL } from '../../api/client';
 import { useGeoStore } from '../../store/geoStore';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import type { GoNoGoVerdict, GoNoGoFactor, GoNoGoResult, HealthCheck, WeatherSnapshot } from '../../types';
@@ -46,6 +48,26 @@ const STATUS_DOT: Record<GoNoGoFactor['status'], string> = {
 };
 
 const CURRENT_LOCATION_BASIS = 'current-location';
+
+/** Turn a failed /health/evaluate call into a message that says what actually went wrong. */
+function describeEvaluationError(error: unknown): string {
+  if (axios.isAxiosError(error)) {
+    if (error.response) {
+      const status = error.response.status;
+      const serverMsg = (error.response.data as { error?: string } | undefined)?.error;
+      if (status === 429) return 'Too many requests right now. Wait a minute, then tap Retry.';
+      if (status >= 500) {
+        return `The server hit a problem while evaluating (error ${status}${serverMsg ? `: ${serverMsg}` : ''}). Tap Retry in a moment.`;
+      }
+      return serverMsg ?? `The server rejected the request (error ${status}).`;
+    }
+    if (error.code === 'ECONNABORTED' || error.code === 'ETIMEDOUT') {
+      return 'The server took too long to respond. It may be waking up — tap Retry in a few seconds.';
+    }
+    return `Could not reach the SkyCheck server (${API_BASE_URL}). Your internet may be fine — the server could be offline or unreachable.`;
+  }
+  return 'Could not complete evaluation. Tap Retry.';
+}
 
 export default function GoNoGoPage() {
   const navigate = useNavigate();
@@ -109,7 +131,8 @@ export default function GoNoGoPage() {
     queryFn:  () => evaluateGoNoGo({ lat, lon, routeId: routeIdForEvaluation }),
     staleTime: 5 * 60 * 1000,
     gcTime:    0,
-    retry: 1,
+    retry: 2,
+    retryDelay: (attempt) => Math.min(2000 * (attempt + 1), 6000),
     enabled: isOnline && !!todayHealth && routesFetched && hasResolvedRouteBasis,
     refetchOnMount: false,
     refetchOnWindowFocus: false,
@@ -173,7 +196,7 @@ export default function GoNoGoPage() {
           <p className="text-gray-600 text-sm">
             {!isOnline
               ? 'No cached weather was found yet. Open the Dashboard once while online, then Go/No-Go can work offline.'
-              : 'Could not complete evaluation. Check your connection.'}
+              : describeEvaluationError(error)}
           </p>
           {isOnline && (
             <button onClick={() => refetch()}
