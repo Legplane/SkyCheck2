@@ -136,12 +136,17 @@ router.post('/evaluate', requireAuth, async (req: Request, res: Response) => {
 
     // 4. Active school announcement
     const now = new Date();
+    // Announcements are supplementary: if these lookups fail, degrade to
+    // "no announcement" instead of failing the whole evaluation.
     const schoolAnn = await prisma.schoolAnnouncement.findFirst({
       where: {
         effectiveAt: { lte: now },
         OR: [{ expiresAt: null }, { expiresAt: { gte: now } }],
       },
       orderBy: { effectiveAt: 'desc' },
+    }).catch((e: unknown) => {
+      console.warn('[Health] School announcement lookup failed:', (e as Error).message);
+      return null;
     });
 
     // 5. Active gov advisories
@@ -151,6 +156,9 @@ router.post('/evaluate', requireAuth, async (req: Request, res: Response) => {
         effectiveAt: { lte: now },
         OR: [{ expiresAt: null }, { expiresAt: { gte: now } }],
       },
+    }).catch((e: unknown) => {
+      console.warn('[Health] Gov announcement lookup failed:', (e as Error).message);
+      return [] as Array<{ source: string; title: string; severity: string }>;
     });
 
     // 6. Run the engine
@@ -230,7 +238,12 @@ router.post('/evaluate', requireAuth, async (req: Request, res: Response) => {
     });
   } catch (err) {
     console.error('[Health] Evaluate error:', err);
-    res.status(500).json({ error: 'Evaluation failed. Please try again.' });
+    const weatherDown = /weather provider|Open-Meteo|MET Norway|timeout|ECONN|ENOTFOUND/i.test((err as Error)?.message ?? '');
+    res.status(weatherDown ? 503 : 500).json({
+      error: weatherDown
+        ? 'Weather data is temporarily unavailable. Please try again.'
+        : 'Evaluation failed. Please try again.',
+    });
   }
 });
 
