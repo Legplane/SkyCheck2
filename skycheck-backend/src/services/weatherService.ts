@@ -10,8 +10,15 @@ import {
   type AWCurrent,
   type AWHourly,
 } from './accuWeatherService';
+import { fetchMetNorwayForecast } from './metNorwayService';
 
 const BASE = 'https://api.open-meteo.com/v1/forecast';
+
+// When Open-Meteo answers 429 we stop calling it for a while. Without this every
+// cron cycle / user request re-hits a blocked API (plus a 3s retry each time).
+let openMeteoCooldownUntil = 0;
+const OPEN_METEO_COOLDOWN_MS = 30 * 60 * 1000;
+const openMeteoCoolingDown = () => Date.now() < openMeteoCooldownUntil;
 const OLONGAPO_CITY_CENTER = {
   lat: 14.8386,
   lon: 120.2842,
@@ -536,6 +543,9 @@ async function fetchOpenMeteoForecast(lat: number, lon: number): Promise<{
   hourly: HourlyForecast[];
 }> {
   // DEM elevation sharpens statistical downscaling for hills/coasts (same grid Open-Meteo uses for cells)
+  if (openMeteoCoolingDown()) {
+    throw Object.assign(new Error('Open-Meteo cooling down after 429'), { code: 'OM_COOLDOWN' });
+  }
   let demElevation: number | undefined;
   try {
     const { data } = await axios.get<{ elevation: number[] }>(
@@ -570,10 +580,19 @@ async function fetchOpenMeteoForecast(lat: number, lon: number): Promise<{
     data = res.data;
   } catch (err) {
     if (axios.isAxiosError(err) && err.response?.status === 429) {
-      console.warn('[Weather] 429 — retry in 3s');
-      await new Promise(r => setTimeout(r, 3000));
-      const retry = await axios.get<OpenMeteoResponse>(`${BASE}?${params}`, { timeout: 12000 });
-      data = retry.data;
+      const reason = String((err.response.data as { reason?: string } | undefined)?.reason ?? '');
+      const daily = /daily/i.test(reason);
+      // A daily-limit 429 will not clear in 3s — don't retry, back off instead.
+      openMeteoCooldownUntil = Date.now() + (daily ? 60 : OPEN_METEO_COOLDOWN_MS / 60000) * 60 * 1000;
+      if (!daily) {
+        console.warn('[Weather] 429 — retry in 3s');
+        await new Promise(r => setTimeout(r, 3000));
+        try {
+          const retry = await axios.get<OpenMeteoResponse>(`${BASE}?${params}`, { timeout: 12000 });
+          openMeteoCooldownUntil = 0;
+          data = retry.data;
+        } catch (e2) { throw e2; }
+      } else throw err;
     } else throw err;
   }
 
@@ -699,18 +718,32 @@ export async function fetchWeatherData(lat: number, lon: number): Promise<{
     }
   }
 
-  let om: Awaited<ReturnType<typeof fetchOpenMeteoForecast>>;
+  let om: { current: CurrentWeather; hourly: HourlyForecast[] } | undefined;
+  let providerName = OLONGAPO_CITY_CENTER.name;
+  let primaryErr: unknown;
   try {
     om = await fetchOpenMeteoForecast(cityLat, cityLon);
   } catch (err) {
+    primaryErr = err;
     const status = axios.isAxiosError(err) ? err.response?.status : null;
-    const code = axios.isAxiosError(err) ? err.code : null;
-    if (status === 429) console.warn('[Weather] Open-Meteo daily/rate limit reached and AccuWeather fallback is unavailable');
-    else if (code === 'ECONNABORTED') console.warn('[Weather] Open-Meteo timed out and AccuWeather fallback is unavailable');
-    else console.warn('[Weather] Open-Meteo unavailable and AccuWeather fallback is unavailable');
+    if (status === 429) console.warn('[Weather] Open-Meteo rate/daily limit reached — trying MET Norway');
+    else if ((err as { code?: string }).code === 'OM_COOLDOWN') { /* quiet: already known */ }
+    else console.warn('[Weather] Open-Meteo unavailable — trying MET Norway:', (err as Error).message);
+  }
+
+  if (!om) {
+    try {
+      om = await fetchMetNorwayForecast(cityLat, cityLon);
+      console.log('[Weather] Served from MET Norway fallback');
+    } catch (err) {
+      console.warn('[Weather] MET Norway fallback failed:', (err as Error).message);
+    }
+  }
+
+  if (!om) {
     const stale = getStaleCachedWeather(cityLat, cityLon);
     if (stale) {
-      console.warn('[Weather] Provider outage - using stale cached city weather for continuity');
+      console.warn('[Weather] All providers down - using stale cached city weather for continuity');
       return {
         current: stale.current,
         hourly: stale.hourly,
@@ -718,14 +751,14 @@ export async function fetchWeatherData(lat: number, lon: number): Promise<{
         ...(stale.providerPlaceName ? { providerPlaceName: stale.providerPlaceName } : {}),
       };
     }
-    throw err;
+    throw primaryErr ?? new Error('No weather provider available');
   }
 
   const payload: WeatherCachePayload = {
     current: om.current,
     hourly: om.hourly,
     weatherRisk: evaluateWeatherRisk(om.current),
-    providerPlaceName: OLONGAPO_CITY_CENTER.name,
+    providerPlaceName: providerName,
   };
 
   setCachedWeather(cityLat, cityLon, payload);

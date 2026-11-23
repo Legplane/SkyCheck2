@@ -30,10 +30,20 @@ export function startRiskCron(): void {
       ]);
       let updated = 0, fired = 0;
 
+      // Weather is city-wide (cached), so probe once. If every provider is down,
+      // skip this cycle instead of failing each route with 3s sleeps in between.
+      if (routes.length > 0) {
+        try {
+          await fetchWeatherData(routes[0].startLat, routes[0].startLon);
+        } catch (err) {
+          console.warn(`[Cron] Weather unavailable — skipping cycle (${(err as Error).message})`);
+          return;
+        }
+      }
+
       for (const route of routes) {
         try {
           const sw = await fetchWeatherData(route.startLat, route.startLon);
-          await sleep(500);
           const dw = await fetchWeatherData(route.destLat, route.destLon);
 
           const risk = await evaluateRouteCombinedRisk(
@@ -67,7 +77,7 @@ export function startRiskCron(): void {
         } catch (err) {
           console.error(`[Cron] Route ${route.id}:`, (err as Error).message);
         }
-        await sleep(3000);
+        await sleep(250);
       }
       console.log(`[Cron] Done - ${updated} updated, ${fired} alerts, ${skipped} inactive routes skipped (${getActiveWindowMinutes()}m window)`);
     } catch (err) {
