@@ -87,7 +87,9 @@ export async function getTodayHealthCheck(): Promise<HealthCheck | null> {
 export async function evaluateGoNoGo(params: {
   lat: number; lon: number; routeId?: string;
 }): Promise<GoNoGoResult> {
-  const { data } = await apiClient.post<GoNoGoResult>('/health/evaluate', params);
+  // Evaluation fans out to several weather/traffic/flood providers and a free-tier
+  // host may be cold-starting, so allow more time than the 30s default.
+  const { data } = await apiClient.post<GoNoGoResult>('/health/evaluate', params, { timeout: 60_000 });
   return data;
 }
 
