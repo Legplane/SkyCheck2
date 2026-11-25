@@ -1,7 +1,7 @@
 import { apiClient } from './client';
 import type {
   WeatherSnapshot, Route, CreateRoutePayload, RoutePreview,
-  Alert, AlertGroup, HealthCheckPayload, HealthCheck,
+  Alert, AlertGroup, 
   GoNoGoResult, AnnouncementsResponse, CombinedRisk,
 } from '../types';
 
@@ -71,25 +71,12 @@ export async function deleteAllAlerts(): Promise<{ deleted: number }> {
   return { deleted: data.deleted ?? 0 };
 }
 
-// ── Health Check ──────────────────────────────────────────────────
-export async function submitHealthCheck(
-  payload: HealthCheckPayload,
-): Promise<{ message: string; id: string }> {
-  const { data } = await apiClient.post('/health/check', payload);
-  return data;
-}
-
-export async function getTodayHealthCheck(): Promise<HealthCheck | null> {
-  const { data } = await apiClient.get<HealthCheck | null>('/health/today');
-  return data;
-}
-
 export async function evaluateGoNoGo(params: {
   lat: number; lon: number; routeId?: string;
 }): Promise<GoNoGoResult> {
   // Evaluation fans out to several weather/traffic/flood providers and a free-tier
   // host may be cold-starting, so allow more time than the 30s default.
-  const { data } = await apiClient.post<GoNoGoResult>('/health/evaluate', params, { timeout: 60_000 });
+  const { data } = await apiClient.post<GoNoGoResult>('/go-no-go/evaluate', params, { timeout: 60_000 });
   return data;
 }
 

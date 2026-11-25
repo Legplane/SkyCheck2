@@ -12,7 +12,7 @@ import authRoutes         from './routes/auth';
 import weatherRoutes      from './routes/weather';
 import routeRoutes        from './routes/routes';
 import alertRoutes        from './routes/alerts';
-import healthRoutes       from './routes/health';
+import goNoGoRoutes       from './routes/goNoGo';
 import announcementRoutes from './routes/announcements';
 import { startRiskCron, startMorningAlertCron } from './services/cronService';
 import { clearStaleBasis } from './utils/clearStaleBasis';
@@ -90,7 +90,7 @@ app.use('/auth',          authRoutes);
 app.use('/weather',       weatherRoutes);
 app.use('/routes',        routeRoutes);
 app.use('/alerts',        alertRoutes);
-app.use('/health',        healthRoutes);
+app.use('/go-no-go',      goNoGoRoutes);
 app.use('/announcements', announcementRoutes);
 
 app.use((_req, res) => res.status(404).json({ error: 'Endpoint not found.' }));

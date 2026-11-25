@@ -21,7 +21,6 @@ import DashboardPage      from './pages/app/DashboardPage';
 import RoutesPage         from './pages/app/RoutesPage';
 import AlertsPage         from './pages/app/AlertsPage';
 import ProfilePage        from './pages/app/ProfilePage';
-import HealthCheckPage    from './pages/app/HealthCheckPage';
 import GoNoGoPage         from './pages/app/GoNoGoPage';
 import AnnouncementsPage  from './pages/app/AnnouncementsPage';
 
@@ -155,7 +154,6 @@ export default function App() {
               <Route path="routes"        element={<RoutesPage />} />
               <Route path="alerts"        element={<AlertsPage />} />
               <Route path="profile"       element={<ProfilePage />} />
-              <Route path="health-check"  element={<HealthCheckPage />} />
               <Route path="go-no-go"      element={<GoNoGoPage />} />
               <Route path="announcements" element={<AnnouncementsPage />} />
             </Route>

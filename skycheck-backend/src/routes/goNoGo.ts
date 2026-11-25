@@ -4,7 +4,6 @@ import { requireAuth } from '../middleware/auth';
 import { evaluateGoNoGo } from '../services/goNoGoEngine';
 import { fetchWeatherData, effectiveWindKmH } from '../services/weatherService';
 import { evaluateCombinedRisk, evaluateRouteCombinedRisk } from '../services/combinedRiskService';
-import { manilaCheckDate } from '../utils/manilaDate';
 
 const router = Router();
 const prisma  = new PrismaClient();
@@ -13,92 +12,13 @@ const OLONGAPO_CITY_CENTER = {
   lon: 120.2842,
 };
 
-// ── POST /health/check — submit today's health assessment ─────────
-router.post('/check', requireAuth, async (req: Request, res: Response) => {
-  try {
-    const {
-      hasFever, feverTemp, hasCough, hasSoreThroat, hasFatigue,
-      hasDifficulty, hasHeadache, hasBodyPain, hasVomiting,
-      hasChronicCondition, chronicDetail, overallFeeling, additionalNotes,
-    } = req.body;
-
-    const checkDate = manilaCheckDate();
-
-    // Upsert — one check per calendar day per user (Asia/Manila)
-    const check = await prisma.healthCheck.upsert({
-      where:  { userId_checkDate: { userId: req.userId!, checkDate } },
-      create: {
-        userId: req.userId!,
-        checkDate,
-        hasFever:           !!hasFever,
-        feverTemp:          feverTemp ?? null,
-        hasCough:           !!hasCough,
-        hasSoreThroat:      !!hasSoreThroat,
-        hasFatigue:         !!hasFatigue,
-        hasDifficulty:      !!hasDifficulty,
-        hasHeadache:        !!hasHeadache,
-        hasBodyPain:        !!hasBodyPain,
-        hasVomiting:        !!hasVomiting,
-        hasChronicCondition:!!hasChronicCondition,
-        chronicDetail:      chronicDetail ?? null,
-        overallFeeling:     overallFeeling ?? 'well',
-        additionalNotes:    additionalNotes ?? null,
-      },
-      update: {
-        hasFever:           !!hasFever,
-        feverTemp:          feverTemp ?? null,
-        hasCough:           !!hasCough,
-        hasSoreThroat:      !!hasSoreThroat,
-        hasFatigue:         !!hasFatigue,
-        hasDifficulty:      !!hasDifficulty,
-        hasHeadache:        !!hasHeadache,
-        hasBodyPain:        !!hasBodyPain,
-        hasVomiting:        !!hasVomiting,
-        hasChronicCondition:!!hasChronicCondition,
-        chronicDetail:      chronicDetail ?? null,
-        overallFeeling:     overallFeeling ?? 'well',
-        additionalNotes:    additionalNotes ?? null,
-      },
-    });
-
-    res.json({ message: 'Health check saved.', id: check.id });
-  } catch (err) {
-    console.error('[Health] Check error:', err);
-    res.status(500).json({ error: 'Failed to save health check.' });
-  }
-});
-
-// ── GET /health/today — get today's health check ──────────────────
-router.get('/today', requireAuth, async (req: Request, res: Response) => {
-  try {
-    const checkDate = manilaCheckDate();
-    const check = await prisma.healthCheck.findUnique({
-      where: { userId_checkDate: { userId: req.userId!, checkDate } },
-    });
-    res.json(check ?? null);
-  } catch {
-    res.status(500).json({ error: 'Failed to fetch health check.' });
-  }
-});
-
-// ── POST /health/evaluate — full Go/No-Go evaluation ─────────────
+// ── POST /go-no-go/evaluate — full Go/No-Go evaluation ─────────────
 router.post('/evaluate', requireAuth, async (req: Request, res: Response) => {
   try {
     const { lat, lon, routeId } = req.body;
 
     if (!lat || !lon) {
       res.status(400).json({ error: 'lat and lon are required.' });
-      return;
-    }
-
-    // 1. Today's health check (calendar day in Asia/Manila)
-    const checkDate = manilaCheckDate();
-    const health = await prisma.healthCheck.findUnique({
-      where: { userId_checkDate: { userId: req.userId!, checkDate } },
-    });
-
-    if (!health) {
-      res.status(400).json({ error: 'Please complete today\'s health check first.', code: 'NO_HEALTH_CHECK' });
       return;
     }
 
@@ -145,7 +65,7 @@ router.post('/evaluate', requireAuth, async (req: Request, res: Response) => {
       },
       orderBy: { effectiveAt: 'desc' },
     }).catch((e: unknown) => {
-      console.warn('[Health] School announcement lookup failed:', (e as Error).message);
+      console.warn('[GoNoGo] School announcement lookup failed:', (e as Error).message);
       return null;
     });
 
@@ -157,7 +77,7 @@ router.post('/evaluate', requireAuth, async (req: Request, res: Response) => {
         OR: [{ expiresAt: null }, { expiresAt: { gte: now } }],
       },
     }).catch((e: unknown) => {
-      console.warn('[Health] Gov announcement lookup failed:', (e as Error).message);
+      console.warn('[GoNoGo] Gov announcement lookup failed:', (e as Error).message);
       return [] as Array<{ source: string; title: string; severity: string }>;
     });
 
@@ -178,18 +98,6 @@ router.post('/evaluate', requireAuth, async (req: Request, res: Response) => {
       trafficFreeFlowKmh:  routeRisk.trafficFreeFlowKmh,
       trafficVolumeLevel:  routeRisk.trafficVolumeLevel,
       trafficLabel:        routeRisk.trafficLabel,
-
-      hasFever:            health.hasFever,
-      feverTemp:           health.feverTemp,
-      hasCough:            health.hasCough,
-      hasSoreThroat:       health.hasSoreThroat,
-      hasFatigue:          health.hasFatigue,
-      hasDifficultyBreath: health.hasDifficulty,
-      hasHeadache:         health.hasHeadache,
-      hasBodyPain:         health.hasBodyPain,
-      hasVomiting:         health.hasVomiting,
-      hasChronicCondition: health.hasChronicCondition,
-      overallFeeling:      health.overallFeeling,
 
       schoolStatus:   schoolAnn?.status ?? 'F2F',
       govSeverities:  govAnns.map(a => a.severity),
@@ -229,15 +137,10 @@ router.post('/evaluate', requireAuth, async (req: Request, res: Response) => {
         title:    a.title,
         severity: a.severity,
       })),
-      healthSummary: {
-        overallFeeling:      health.overallFeeling,
-        hasFever:            health.hasFever,
-        hasChronicCondition: health.hasChronicCondition,
-      },
       evaluatedAt: new Date().toISOString(),
     });
   } catch (err) {
-    console.error('[Health] Evaluate error:', err);
+    console.error('[GoNoGo] Evaluate error:', err);
     const weatherDown = /weather provider|Open-Meteo|MET Norway|timeout|ECONN|ENOTFOUND/i.test((err as Error)?.message ?? '');
     res.status(weatherDown ? 503 : 500).json({
       error: weatherDown

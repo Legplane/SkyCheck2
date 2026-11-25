@@ -53,3 +53,18 @@ export function shortenAddress(displayName: string): string {
   const parts = displayName.split(', ');
   return parts.slice(0, 3).join(', ');
 }
+
+// Turn GPS coordinates into a readable place name (used for "current location").
+export async function reverseGeocode(lat: number, lon: number): Promise<string | null> {
+  try {
+    const params = new URLSearchParams({
+      lat: String(lat), lon: String(lon), format: 'json', zoom: '18', addressdetails: '0',
+    });
+    const response = await fetch(`https://nominatim.openstreetmap.org/reverse?${params}`);
+    if (!response.ok) return null;
+    const data = await response.json();
+    return typeof data.display_name === 'string' ? data.display_name : null;
+  } catch {
+    return null;
+  }
+}

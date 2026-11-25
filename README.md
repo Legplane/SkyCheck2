@@ -2,7 +2,7 @@
 
 SkyCheck is a Progressive Web App for student commuters that helps answer one daily question: **is it safe and practical to go to school today?**
 
-The app combines weather, traffic, flood risk, route data, school advisories, government advisories, and a daily health check into a simple Go / No-Go decision. It is designed for students around Gordon College and nearby Philippine commute routes, where rain, heat, flooding, traffic, and class announcements can quickly affect travel safety.
+The app combines weather, traffic, flood risk, route data, school advisories, government advisories into a simple Go / No-Go decision. It is designed for students around Gordon College and nearby Philippine commute routes, where rain, heat, flooding, traffic, and class announcements can quickly affect travel safety.
 
 ## Live Deployment
 
@@ -16,13 +16,12 @@ The app combines weather, traffic, flood risk, route data, school advisories, go
 - Real-time weather dashboard using Open-Meteo with optional AccuWeather fallback
 - GPS-based location tracking with automatic Subic fallback when precise location is unavailable
 - Live or estimated traffic risk using TomTom Traffic API with rush-hour fallback
-- Route-aware TomTom traffic sampling across start, middle, and destination points, with low/moderate/high traffic volume display
+- Route-aware traffic from TomTom Routing (live vs free-flow travel time along the real road path), falling back to TomTom flow sampling, with low/moderate/high display
 - Route saving with distance, travel time, multi-mode fare estimates, student/PWD/senior discounts, and risk status
 - Smart combined risk messages that explain whether weather/heat, traffic, flood risk, or a mix of them is causing the warning
 - Street-level route map preview using Leaflet, MapTiler/OpenStreetMap tiles, and closer route zoom
 - Flood risk estimation using elevation and rain indicators
 - Go / No-Go decision engine based on health, weather, traffic, flood, heat, advisories, and selected route risk when available
-- Daily health check
 - School and government announcement support
 - PWA install support for mobile
 - Offline mode with cached weather, cached saved routes, and offline Go / No-Go estimate
@@ -152,8 +151,8 @@ When offline, users can:
 
 - View the last cached weather dashboard
 - View saved routes from the last successful route fetch
-- Start a health check locally
-- Generate a Go / No-Go estimate using cached weather and the local health check
+- Open the Go / No-Go screen locally
+- Generate a Go / No-Go estimate using cached weather
 
 When offline, users cannot:
 

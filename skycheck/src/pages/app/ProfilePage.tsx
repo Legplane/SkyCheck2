@@ -263,7 +263,7 @@ function AboutSkyCheckModal({ onClose }: { onClose: () => void }) {
           <InfoBlock
             icon={<Target size={20} className="text-green-600" />}
             title="Purpose"
-            body="The app combines weather, rain probability, heat index, traffic, flood risk, saved routes, announcements, and a daily health check into one Go / No-Go recommendation for student commuters."
+            body="The app combines weather, rain probability, heat index, traffic, flood risk, saved routes, and announcements into one Go / No-Go recommendation for student commuters."
           />
           <InfoBlock
             icon={<MapPinned size={20} className="text-amber-600" />}

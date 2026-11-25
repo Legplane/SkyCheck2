@@ -6,7 +6,6 @@ import { RISK } from '../constants/risk';
 //
 // Inputs:
 //   • weatherRisk, floodRisk, trafficRisk, heatIndex
-//   • healthScore (computed from HealthCheck)
 //   • schoolStatus (F2F | ONLINE | SUSPENDED | HYBRID)
 //   • activeGovAdvisories (severity array)
 //
@@ -39,19 +38,6 @@ export interface GoNoGoInput {
   trafficVolumeLevel?: 'LOW' | 'MEDIUM' | 'HIGH' | 'UNKNOWN';
   trafficLabel?: string;
 
-  // Health
-  hasFever:           boolean;
-  feverTemp:          number | null;
-  hasCough:           boolean;
-  hasSoreThroat:      boolean;
-  hasFatigue:         boolean;
-  hasDifficultyBreath:boolean;
-  hasHeadache:        boolean;
-  hasBodyPain:        boolean;
-  hasVomiting:        boolean;
-  hasChronicCondition:boolean;
-  overallFeeling:     string;  // well | mild | sick | severe
-
   // Institutional
   schoolStatus:       string;  // F2F | ONLINE | SUSPENDED | HYBRID
   govSeverities:      string[];// e.g. ['WARNING', 'ADVISORY']
@@ -66,7 +52,7 @@ export interface GoNoGoResult {
 }
 
 export interface GoNoGoFactor {
-  category: 'HEALTH' | 'WEATHER' | 'FLOOD' | 'TRAFFIC' | 'SCHOOL' | 'GOVERNMENT' | 'HEAT';
+  category: 'WEATHER' | 'FLOOD' | 'TRAFFIC' | 'SCHOOL' | 'GOVERNMENT' | 'HEAT';
   label:    string;
   status:   'OK' | 'CAUTION' | 'DANGER';
   detail:   string;
@@ -287,55 +273,6 @@ export function evaluateGoNoGo(input: GoNoGoInput): GoNoGoResult {
       detail: 'No active government advisories' });
   }
 
-  // ── 3. Health Assessment ──────────────────────────────────────
-  const isSick    = input.overallFeeling === 'sick' || input.overallFeeling === 'severe';
-  const isMildIll = input.overallFeeling === 'mild';
-  const hasFeverHigh = input.hasFever && (input.feverTemp ?? 38) >= 38;
-  const hasDanger = input.hasDifficultyBreath || (input.hasFever && (input.feverTemp ?? 38) >= 39);
-
-  if (hasDanger || input.overallFeeling === 'severe') {
-    factors.push({ category: 'HEALTH', label: 'Health Status', status: 'DANGER',
-      detail: hasDanger
-        ? `Severe symptoms detected${input.feverTemp ? ` (${input.feverTemp}°C fever)` : ''} — seek medical attention`
-        : 'Feeling severely ill — rest and recover first' });
-    score -= 100;
-    if (verdict !== 'DO_NOT_GO') { verdict = 'DO_NOT_GO'; primaryReason = 'Your health condition is too poor to commute safely'; }
-  } else if (isSick || hasFeverHigh) {
-    factors.push({ category: 'HEALTH', label: 'Health Status', status: 'DANGER',
-      detail: hasFeverHigh
-        ? `Fever ${input.feverTemp ?? '≥38'}°C — you may be contagious`
-        : 'Feeling sick — commuting puts you and others at risk' });
-    score -= 60;
-    if (verdict === 'GO') { verdict = 'OWN_RISK'; primaryReason = 'You are feeling unwell'; }
-  } else if (
-    isMildIll || input.hasFatigue || input.hasCough || input.hasSoreThroat
-    || input.hasHeadache || input.hasBodyPain || input.hasVomiting
-  ) {
-    const symptoms = [
-      input.hasFatigue && 'fatigue',
-      input.hasCough   && 'cough',
-      input.hasSoreThroat && 'sore throat',
-      input.hasHeadache && 'headache',
-      input.hasBodyPain && 'body pain',
-      input.hasVomiting && 'nausea/vomiting',
-    ].filter(Boolean).join(', ');
-    factors.push({ category: 'HEALTH', label: 'Health Status', status: 'CAUTION',
-      detail: `Mild symptoms (${symptoms || 'mild discomfort'}) — monitor your condition` });
-    score -= 20;
-    if (input.hasChronicCondition) {
-      score -= 15;
-      factors.push({ category: 'HEALTH', label: 'Chronic Condition', status: 'CAUTION',
-        detail: 'Underlying condition — extra caution in high heat and rain' });
-    }
-    if (verdict === 'GO') { verdict = 'OWN_RISK'; primaryReason = 'You have mild symptoms today'; }
-  } else {
-    factors.push({ category: 'HEALTH', label: 'Health Status', status: 'OK',
-      detail: input.hasChronicCondition
-        ? 'Generally well but has underlying condition — check other risks'
-        : 'Feeling well — no symptoms reported' });
-    if (input.hasChronicCondition) score -= 5;
-  }
-
   // ── 4. Weather Risk (tier = rain probability only) ───────────
   if (input.weatherRisk === 'HIGH') {
     factors.push({ category: 'WEATHER', label: 'Weather Risk', status: 'DANGER',
@@ -373,10 +310,6 @@ export function evaluateGoNoGo(input: GoNoGoInput): GoNoGoResult {
   const H = RISK.WEATHER;
   if (input.heatIndex >= H.HEAT_HIGH) {
     score -= 25;
-    if (input.hasChronicCondition && verdict === 'GO') {
-      verdict = 'OWN_RISK';
-      primaryReason = 'Extreme heat index with underlying health condition';
-    }
   } else if (input.heatIndex >= H.HEAT_MED) {
     score -= 15;
   }
@@ -408,13 +341,10 @@ export function evaluateGoNoGo(input: GoNoGoInput): GoNoGoResult {
 function buildRecommendation(verdict: GoNoGoVerdict, input: GoNoGoInput): string {
   if (verdict === 'DO_NOT_GO') {
     if (input.schoolStatus === 'SUSPENDED') return 'Classes are officially suspended. Stay home and rest.';
-    if (input.overallFeeling === 'severe' || input.hasDifficultyBreath) return 'Seek medical attention immediately. Do not commute.';
-    if (input.hasFever) return 'You have a fever. Rest at home and monitor your temperature.';
     return 'Conditions are unsafe. Stay home and check for updates.';
   }
   if (verdict === 'OWN_RISK') {
     if (input.schoolStatus === 'ONLINE') return 'Classes are online. Commuting is optional — attend from home if possible.';
-    if (input.overallFeeling === 'mild') return 'You have mild symptoms. If you must go, wear a mask and rest when possible.';
     if (input.weatherRisk === 'HIGH') return 'Severe weather ahead. If you must go, leave early, bring raincoat, and budget extra fare.';
     return 'Proceed with caution. Monitor conditions and have a backup plan.';
   }

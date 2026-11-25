@@ -175,35 +175,11 @@ export interface PaginatedResponse<T> {
   page: number;
 }
 
-// ── Health Check ──────────────────────────────────────────────────
-export interface HealthCheckPayload {
-  hasFever:            boolean;
-  feverTemp:           number | null;
-  hasCough:            boolean;
-  hasSoreThroat:       boolean;
-  hasFatigue:          boolean;
-  hasDifficulty:       boolean;
-  hasHeadache:         boolean;
-  hasBodyPain:         boolean;
-  hasVomiting:         boolean;
-  hasChronicCondition: boolean;
-  chronicDetail:       string;
-  overallFeeling:      'well' | 'mild' | 'sick' | 'severe';
-  additionalNotes:     string;
-}
-
-export interface HealthCheck extends HealthCheckPayload {
-  id:        string;
-  userId:    string;
-  checkDate: string;
-  createdAt: string;
-}
-
 // ── Go / No-Go ────────────────────────────────────────────────────
 export type GoNoGoVerdict = 'GO' | 'OWN_RISK' | 'DO_NOT_GO';
 
 export interface GoNoGoFactor {
-  category: 'HEALTH' | 'WEATHER' | 'FLOOD' | 'TRAFFIC' | 'SCHOOL' | 'GOVERNMENT' | 'HEAT';
+  category: 'WEATHER' | 'FLOOD' | 'TRAFFIC' | 'SCHOOL' | 'GOVERNMENT' | 'HEAT';
   label:    string;
   status:   'OK' | 'CAUTION' | 'DANGER';
   detail:   string;
@@ -220,7 +196,6 @@ export interface GoNoGoResult {
   schoolStatus:   string;
   schoolTitle:    string | null;
   govAdvisories:  { source: string; title: string; severity: string }[];
-  healthSummary:  { overallFeeling: string; hasFever: boolean; hasChronicCondition: boolean };
   evaluatedAt:    string;
 }
 

@@ -3,6 +3,7 @@ import type { TrafficResult, RiskLevel } from '../types';
 import { RISK } from '../constants/risk';
 
 const TOMTOM_BASE = 'https://api.tomtom.com/traffic/services/4/flowSegmentData/relative0/10/json';
+const TOMTOM_ROUTING_BASE = 'https://api.tomtom.com/routing/1/calculateRoute';
 const TRAFFIC_TTL_MS = 10 * 60 * 1000;
 const TOMTOM_TIMEOUT_MS = 5500;
 const trafficCache = new Map<string, { cachedAt: number; result: TrafficResult }>();
@@ -38,6 +39,13 @@ export async function fetchRouteTrafficLevel(
   const cached = getCachedRouteTraffic(startLat, startLon, destLat, destLon);
   if (cached) return cached;
 
+  // 1) Best source: TomTom Routing. One call follows the real road path and compares
+  //    live travel time against free-flow time for the WHOLE trip (accounts for
+  //    queues, closures and incidents, not just three spot samples).
+  const routed = await fetchTomTomRouteTraffic(startLat, startLon, destLat, destLon);
+  if (routed) return cacheRouteTraffic(startLat, startLon, destLat, destLon, routed);
+
+  // 2) Fallback: spot-sample TomTom flow data at start / middle / destination.
   const midLat = (startLat + destLat) / 2;
   const midLon = (startLon + destLon) / 2;
   const samples = await Promise.allSettled([
@@ -76,6 +84,66 @@ export async function fetchRouteTrafficLevel(
     destLon,
     rushHourFallback('live route traffic temporarily unavailable', midLat, midLon),
   );
+}
+
+interface TomTomRoutingResponse {
+  routes?: Array<{
+    summary: {
+      lengthInMeters: number;
+      travelTimeInSeconds: number;
+      trafficDelayInSeconds: number;
+      noTrafficTravelTimeInSeconds?: number;
+      liveTrafficIncidentsTravelTimeInSeconds?: number;
+    };
+  }>;
+}
+
+async function fetchTomTomRouteTraffic(
+  startLat: number, startLon: number, destLat: number, destLon: number,
+): Promise<TrafficResult | null> {
+  const key = cleanTomTomKey(process.env.TOMTOM_API_KEY);
+  if (!key) return null;
+
+  try {
+    const { data } = await axios.get<TomTomRoutingResponse>(
+      `${TOMTOM_ROUTING_BASE}/${startLat},${startLon}:${destLat},${destLon}/json`,
+      {
+        params: {
+          key,
+          traffic: true,
+          travelMode: 'car',
+          routeType: 'fastest',
+          computeTravelTimeFor: 'all',
+        },
+        timeout: TOMTOM_TIMEOUT_MS,
+      },
+    );
+
+    const summary = data.routes?.[0]?.summary;
+    if (!summary || summary.travelTimeInSeconds <= 0) return null;
+
+    const freeFlowSec = summary.noTrafficTravelTimeInSeconds
+      ?? Math.max(1, summary.travelTimeInSeconds - summary.trafficDelayInSeconds);
+    const liveSec = summary.travelTimeInSeconds;
+    const ratio = Math.min(1, freeFlowSec / liveSec);
+    const km = summary.lengthInMeters / 1000;
+    const riskLevel = trafficRiskFromRatio(ratio);
+    const delayMin = Math.round(summary.trafficDelayInSeconds / 60);
+
+    return {
+      congestionRatio: Math.round(ratio * 100) / 100,
+      currentSpeed: Math.round(km / (liveSec / 3600)),
+      freeFlowSpeed: Math.round(km / (freeFlowSec / 3600)),
+      riskLevel,
+      volumeLevel: riskLevel,
+      source: 'tomtom',
+      label: `Route traffic: ${trafficVolumeLabel(riskLevel)} (${delayMin > 0 ? `+${delayMin} min delay` : 'no delay'}, live TomTom route)`,
+    };
+  } catch (err: unknown) {
+    const status = axios.isAxiosError(err) ? err.response?.status : null;
+    console.warn(`[Traffic] TomTom routing unavailable (${status ?? 'network'}) - falling back to flow sampling`);
+    return null;
+  }
 }
 
 async function fetchTomTomPoint(lat: number, lon: number, label: string): Promise<TrafficResult | null> {

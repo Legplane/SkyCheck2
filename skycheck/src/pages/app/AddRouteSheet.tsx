@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { X, MapPin, School, Clock, Tag, Bookmark } from 'lucide-react';
+import { X, MapPin, School, Clock, Tag, Bookmark, LocateFixed, Lock } from 'lucide-react';
 import { createRoute, updateRoute, previewRoute } from '../../api';
 import type { CreateRoutePayload, Route, NominatimResult, RoutePreview } from '../../types';
-import { searchAddress, shortenAddress } from '../../services/nominatimService';
+import { searchAddress, shortenAddress, reverseGeocode } from '../../services/nominatimService';
+import { useGeoStore } from '../../store/geoStore';
+import { GORDON_COLLEGE } from '../../constants/destination';
 import { useDebounce } from '../../hooks/useDebounce';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
 import { formatDistance, formatDuration, getApiErrorMessage } from '../../utils';
@@ -35,12 +37,8 @@ export default function AddRouteSheet({ editRoute, onClose, onSaved }: AddRouteS
     isSearching: false,
   });
 
-  const [dest, setDest] = useState<LocationField>({
-    query: editRoute?.destAddress ?? '',
-    selected: editRoute ? { displayName: editRoute.destAddress, lat: editRoute.destLat, lon: editRoute.destLon, placeId: 0 } : null,
-    suggestions: [],
-    isSearching: false,
-  });
+  // The destination is fixed to Gordon College and cannot be changed by the user.
+  const dest = GORDON_COLLEGE;
 
   const [departTime, setDepartTime] = useState(editRoute?.departTime ?? '07:00');
   const [label, setLabel] = useState(editRoute?.label ?? '');
@@ -49,22 +47,58 @@ export default function AddRouteSheet({ editRoute, onClose, onSaved }: AddRouteS
   const [isLoadingPreview, setIsLoadingPreview] = useState(false);
 
   const debStartQuery = useDebounce(start.query, 350);
-  const debDestQuery  = useDebounce(dest.query,  350);
 
   const startRef = useRef<HTMLInputElement>(null);
 
-  // A route saved before the area limit existed may sit outside the coverage
-  // area. Show it, but require it to be changed before it can be saved.
+  const geoStatus = useGeoStore(g => g.status);
+  const geoLat = useGeoStore(g => g.lat);
+  const geoLon = useGeoStore(g => g.lon);
+  const refreshLocation = useGeoStore(g => g.refreshLocation);
+  const [locating, setLocating] = useState(false);
+  const [locationNote, setLocationNote] = useState('');
+
+  // Put a GPS position into the Starting Point field.
+  async function applyCurrentLocation(lat: number, lon: number) {
+    const name = (await reverseGeocode(lat, lon)) ?? 'My current location';
+    setStart({
+      query: shortenAddress(name),
+      selected: { placeId: 0, displayName: name, lat, lon },
+      suggestions: [],
+      isSearching: false,
+    });
+  }
+
+  async function useMyLocation() {
+    setLocationNote('');
+    setLocating(true);
+    const ok = await refreshLocation();
+    setLocating(false);
+    if (!ok) {
+      const { reason } = useGeoStore.getState();
+      setLocationNote(reason || 'Could not get your location. Type your starting point instead.');
+      return;
+    }
+    const { lat, lon } = useGeoStore.getState();
+    await applyCurrentLocation(lat, lon);
+  }
+
+  // New route: pre-fill the start with the live GPS fix when we already have one.
+  const autoFilled = useRef(false);
+  useEffect(() => {
+    if (isEdit || autoFilled.current || geoStatus !== 'granted') return;
+    autoFilled.current = true;
+    void applyCurrentLocation(geoLat, geoLon);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [geoStatus]);
+
+  // A route saved before the area limit existed may have a starting point
+  // outside the coverage area. Show it, but require it to be changed before
+  // it can be saved. (The destination is always Gordon College.)
   const legacyOutsideCoverage = useRef(
-    !!editRoute && !(
-      isWithinCoverage(editRoute.startLat, editRoute.startLon) &&
-      isWithinCoverage(editRoute.destLat, editRoute.destLon)
-    ),
+    !!editRoute && !isWithinCoverage(editRoute.startLat, editRoute.startLon),
   ).current;
 
-  const startOutside = !!start.selected && !isWithinCoverage(start.selected.lat, start.selected.lon);
-  const destOutside  = !!dest.selected  && !isWithinCoverage(dest.selected.lat,  dest.selected.lon);
-  const outsideCoverage = startOutside || destOutside;
+  const outsideCoverage = !!start.selected && !isWithinCoverage(start.selected.lat, start.selected.lon);
 
   // ── Search start ──────────────────────────────────────────────────
   useEffect(() => {
@@ -75,35 +109,24 @@ export default function AddRouteSheet({ editRoute, onClose, onSaved }: AddRouteS
       .catch(() => setStart(s => ({ ...s, isSearching: false })));
   }, [debStartQuery, isOnline, start.selected]);
 
-  // ── Search dest ───────────────────────────────────────────────────
-  useEffect(() => {
-    if (!isOnline || !debDestQuery || debDestQuery.length < 3 || dest.selected) return;
-    setDest(d => ({ ...d, isSearching: true }));
-    searchAddress(debDestQuery)
-      .then(results => setDest(d => ({ ...d, suggestions: results, isSearching: false })))
-      .catch(() => setDest(d => ({ ...d, isSearching: false })));
-  }, [debDestQuery, isOnline, dest.selected]);
-
   // ── Preview route when both selected ─────────────────────────────
   useEffect(() => {
-    if (!start.selected || !dest.selected) { setPreview(null); return; }
+    if (!start.selected) { setPreview(null); return; }
     if (!isOnline) return;
-    if (!isWithinCoverage(start.selected.lat, start.selected.lon) ||
-        !isWithinCoverage(dest.selected.lat, dest.selected.lon)) {
+    if (!isWithinCoverage(start.selected.lat, start.selected.lon)) {
       setPreview(null);
       return;
     }
     setIsLoadingPreview(true);
-    previewRoute({ startLat: start.selected.lat, startLon: start.selected.lon, destLat: dest.selected.lat, destLon: dest.selected.lon })
+    previewRoute({ startLat: start.selected.lat, startLon: start.selected.lon, destLat: dest.lat, destLon: dest.lon })
       .then(setPreview)
       .catch(() => setPreview(null))
       .finally(() => setIsLoadingPreview(false));
-  }, [start.selected, dest.selected, isOnline]);
+  }, [start.selected, isOnline]);
 
   function buildPayload(): CreateRoutePayload {
-    if (!start.selected || !dest.selected) throw new Error('Please select start and destination.');
-    if (!isWithinCoverage(start.selected.lat, start.selected.lon) ||
-        !isWithinCoverage(dest.selected.lat, dest.selected.lon)) {
+    if (!start.selected) throw new Error('Please select a starting point.');
+    if (!isWithinCoverage(start.selected.lat, start.selected.lon)) {
       throw new Error(COVERAGE_OUT_OF_AREA_MESSAGE);
     }
     return {
@@ -111,9 +134,9 @@ export default function AddRouteSheet({ editRoute, onClose, onSaved }: AddRouteS
       startAddress: shortenAddress(start.selected.displayName),
       startLat: start.selected.lat,
       startLon: start.selected.lon,
-      destAddress: shortenAddress(dest.selected.displayName),
-      destLat: dest.selected.lat,
-      destLon: dest.selected.lon,
+      destAddress: shortenAddress(dest.displayName),
+      destLat: dest.lat,
+      destLon: dest.lon,
       departTime,
     };
   }
@@ -130,10 +153,6 @@ export default function AddRouteSheet({ editRoute, onClose, onSaved }: AddRouteS
 
   function selectStart(r: NominatimResult) {
     setStart({ query: shortenAddress(r.displayName), selected: r, suggestions: [], isSearching: false });
-  }
-
-  function selectDest(r: NominatimResult) {
-    setDest({ query: shortenAddress(r.displayName), selected: r, suggestions: [], isSearching: false });
   }
 
   function handleSave() {
@@ -186,7 +205,7 @@ export default function AddRouteSheet({ editRoute, onClose, onSaved }: AddRouteS
 
           {legacyOutsideCoverage && (
             <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-800 text-sm">
-              This route is outside the SkyCheck coverage area ({COVERAGE_AREA_LABEL}). Change the start or destination to a place inside the area before saving.
+              This route is outside the SkyCheck coverage area ({COVERAGE_AREA_LABEL}). Change the starting point to a place inside the area before saving.
             </div>
           )}
 
@@ -200,14 +219,27 @@ export default function AddRouteSheet({ editRoute, onClose, onSaved }: AddRouteS
           <MapView
             restrictToCoverage={!legacyOutsideCoverage}
             start={start.selected ? { lat: start.selected.lat, lon: start.selected.lon } : undefined}
-            destination={dest.selected ? { lat: dest.selected.lat, lon: dest.selected.lon } : undefined}
+            destination={{ lat: dest.lat, lon: dest.lon }}
             waypoints={preview?.waypoints}
             className="h-44 rounded-2xl"
           />
 
           {/* Starting Point */}
           <div>
-            <label className="text-sm font-medium text-gray-700 block mb-1.5">Starting Point</label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-sm font-medium text-gray-700">Starting Point</label>
+              <button
+                type="button"
+                onClick={useMyLocation}
+                disabled={locating || !isOnline}
+                className="flex items-center gap-1 text-xs font-semibold text-primary-600 disabled:opacity-50"
+              >
+                {locating
+                  ? <div className="w-3 h-3 border-2 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
+                  : <LocateFixed size={14} />}
+                Use my current location
+              </button>
+            </div>
             <div className="relative">
               <MapPin size={16} className="absolute left-3 top-3.5 text-gray-400" />
               <input
@@ -224,6 +256,7 @@ export default function AddRouteSheet({ editRoute, onClose, onSaved }: AddRouteS
                 </div>
               )}
             </div>
+            {locationNote && <p className="mt-1 text-xs text-amber-700">{locationNote}</p>}
             {/* Suggestions */}
             {start.suggestions.length > 0 && !start.selected && (
               <ul className="mt-1 bg-white border border-gray-200 rounded-xl shadow-card-lg overflow-hidden">
@@ -242,39 +275,22 @@ export default function AddRouteSheet({ editRoute, onClose, onSaved }: AddRouteS
             )}
           </div>
 
-          {/* Destination */}
+          {/* Destination (fixed) */}
           <div>
-            <label className="text-sm font-medium text-gray-700 block mb-1.5">Destination</label>
-            <div className="relative">
-              <School size={16} className="absolute left-3 top-3.5 text-gray-400" />
-              <input
-                type="text"
-                placeholder="e.g. Gordon College"
-                value={dest.query}
-                onChange={e => setDest(d => ({ ...d, query: e.target.value, selected: null }))}
-                className="w-full pl-9 pr-4 py-3 border border-gray-200 rounded-xl text-sm bg-white focus:outline-none focus:ring-2 focus:ring-primary-600"
-              />
-              {dest.isSearching && (
-                <div className="absolute right-3 top-3.5">
-                  <div className="w-4 h-4 border-2 border-gray-300 border-t-primary-600 rounded-full animate-spin" />
-                </div>
-              )}
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="text-sm font-medium text-gray-700">Destination</label>
+              <span className="flex items-center gap-1 text-xs font-medium text-gray-400">
+                <Lock size={12} /> Fixed
+              </span>
             </div>
-            {dest.suggestions.length > 0 && !dest.selected && (
-              <ul className="mt-1 bg-white border border-gray-200 rounded-xl shadow-card-lg overflow-hidden">
-                {dest.suggestions.map(r => (
-                  <li key={r.placeId}>
-                    <button
-                      onClick={() => selectDest(r)}
-                      className="w-full text-left px-4 py-3 text-sm hover:bg-blue-50 border-b border-gray-50 last:border-0"
-                    >
-                      <span className="font-medium text-gray-900">{r.displayName.split(',')[0]}</span>
-                      <span className="text-xs text-gray-500 block truncate">{shortenAddress(r.displayName)}</span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <div
+              aria-readonly="true"
+              className="relative w-full pl-9 pr-4 py-3 border border-gray-200 rounded-xl text-sm bg-gray-50 text-gray-900 select-none"
+            >
+              <School size={16} className="absolute left-3 top-3.5 text-gray-400" />
+              <span className="font-medium">{dest.displayName.split(',')[0]}</span>
+              <span className="text-xs text-gray-500 block truncate">{shortenAddress(dest.displayName).split(', ').slice(1).join(', ')}</span>
+            </div>
           </div>
 
           {/* Route Preview */}
@@ -349,7 +365,7 @@ export default function AddRouteSheet({ editRoute, onClose, onSaved }: AddRouteS
           {/* Save CTA */}
           <button
             onClick={handleSave}
-            disabled={isPending || !isOnline || !start.selected || !dest.selected || outsideCoverage}
+            disabled={isPending || !isOnline || !start.selected || outsideCoverage}
             className="w-full py-3.5 bg-primary-600 text-white font-semibold rounded-xl hover:bg-primary-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2 mt-2"
           >
             {isPending

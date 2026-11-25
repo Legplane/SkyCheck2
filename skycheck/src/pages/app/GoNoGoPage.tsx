@@ -7,12 +7,11 @@ import {
   Waves, Building2, Landmark, Activity, Sun
 } from 'lucide-react';
 import axios from 'axios';
-import { evaluateGoNoGo, getRoutes, getTodayHealthCheck } from '../../api';
+import { evaluateGoNoGo, getRoutes } from '../../api';
 import { API_BASE_URL } from '../../api/client';
 import { useGeoStore } from '../../store/geoStore';
 import { useOnlineStatus } from '../../hooks/useOnlineStatus';
-import type { GoNoGoVerdict, GoNoGoFactor, GoNoGoResult, HealthCheck, WeatherSnapshot } from '../../types';
-import { healthCheckSignature } from '../../utils/healthSignature';
+import type { GoNoGoVerdict, GoNoGoFactor, GoNoGoResult, WeatherSnapshot } from '../../types';
 import { clsx } from '../../utils';
 
 const VERDICT_CONFIG: Record<GoNoGoVerdict, {
@@ -33,7 +32,7 @@ const VERDICT_CONFIG: Record<GoNoGoVerdict, {
 };
 
 const CATEGORY_ICONS: Record<GoNoGoFactor['category'], typeof Shield> = {
-  HEALTH: Activity, WEATHER: CloudRain, FLOOD: Waves,
+  WEATHER: CloudRain, FLOOD: Waves,
   TRAFFIC: Car, SCHOOL: Building2, GOVERNMENT: Landmark, HEAT: Sun,
 };
 
@@ -49,7 +48,7 @@ const STATUS_DOT: Record<GoNoGoFactor['status'], string> = {
 
 const CURRENT_LOCATION_BASIS = 'current-location';
 
-/** Turn a failed /health/evaluate call into a message that says what actually went wrong. */
+/** Turn a failed /go-no-go/evaluate call into a message that says what actually went wrong. */
 function describeEvaluationError(error: unknown): string {
   if (axios.isAxiosError(error)) {
     if (error.response) {
@@ -80,23 +79,11 @@ export default function GoNoGoPage() {
   const cachedWeather = qc.getQueriesData<WeatherSnapshot>({ queryKey: ['weather'] })
     .find(([, cached]) => Boolean(cached))?.[1];
 
-  const { data: todayHealth, isLoading: healthLoading } = useQuery({
-    queryKey: ['health-today'],
-    queryFn:  getTodayHealthCheck,
-    initialData: !isOnline ? qc.getQueryData<HealthCheck>(['health-today']) : undefined,
-    staleTime: 5 * 60 * 1000,
-    enabled: isOnline,
-    refetchOnMount: false,
-    refetchOnWindowFocus: false,
-  });
-
-  const healthKey = todayHealth ? healthCheckSignature(todayHealth) : 'none';
-
   const { data: routes = [], isFetched: routesFetched } = useQuery({
     queryKey: ['routes'],
     queryFn: getRoutes,
     staleTime: 5 * 60 * 1000,
-    enabled: isOnline && !!todayHealth,
+    enabled: isOnline,
     refetchOnMount: false,
     refetchOnWindowFocus: false,
   });
@@ -126,61 +113,34 @@ export default function GoNoGoPage() {
   };
 
   const { data: liveResult, isLoading, isFetching, refetch, error } = useQuery({
-    // Include health answers so updating the check invalidates cache and refetches evaluation.
-    queryKey: ['go-no-go', lat, lon, healthKey, routeIdForEvaluation ?? (selectedRouteId || 'pending-route-basis')],
+    queryKey: ['go-no-go', lat, lon, routeIdForEvaluation ?? (selectedRouteId || 'pending-route-basis')],
     queryFn:  () => evaluateGoNoGo({ lat, lon, routeId: routeIdForEvaluation }),
     staleTime: 5 * 60 * 1000,
     gcTime:    0,
     retry: 2,
     retryDelay: (attempt) => Math.min(2000 * (attempt + 1), 6000),
-    enabled: isOnline && !!todayHealth && routesFetched && hasResolvedRouteBasis,
+    enabled: isOnline && routesFetched && hasResolvedRouteBasis,
     refetchOnMount: false,
     refetchOnWindowFocus: false,
     refetchOnReconnect: true,
     refetchInterval: isOnline ? 5 * 60 * 1000 : false,
   });
 
-  const offlineResult = !isOnline && todayHealth && cachedWeather
-    ? buildOfflineGoNoGo(todayHealth, cachedWeather)
+  const offlineResult = !isOnline && cachedWeather
+    ? buildOfflineGoNoGo(cachedWeather)
     : null;
   const resultToShow = liveResult ?? offlineResult;
-  const routeBasisLoading = isOnline && !!todayHealth && (!routesFetched || !hasResolvedRouteBasis);
-
-  // ── No health check yet ───────────────────────────────────────
-  if (!healthLoading && !todayHealth) {
-    return (
-      <div className="flex flex-col min-h-screen w-full max-w-6xl mx-auto bg-gray-50">
-        <PageHeader onBack={() => navigate(-1)} onRefresh={refetch} isFetching={false} />
-        <div className="flex flex-col items-center justify-center flex-1 gap-5 px-8 text-center">
-          <div className="bg-blue-100 p-6 rounded-full">
-            <Activity size={48} className="text-primary-600" />
-          </div>
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">Health Check Required</h2>
-            <p className="text-gray-500 text-sm mt-2 leading-relaxed">
-              Complete your daily health check first so SkyCheck can give you an accurate Go/No-Go decision.
-            </p>
-          </div>
-          <button
-            onClick={() => navigate('/app/health-check')}
-            className="w-full py-4 bg-primary-600 text-white font-bold rounded-2xl hover:bg-primary-700 transition-colors"
-          >
-            Start Health Check →
-          </button>
-        </div>
-      </div>
-    );
-  }
+  const routeBasisLoading = isOnline && (!routesFetched || !hasResolvedRouteBasis);
 
   // ── Loading ───────────────────────────────────────────────────
-  if ((isLoading && isOnline) || healthLoading || routeBasisLoading) {
+  if ((isLoading && isOnline) || routeBasisLoading) {
     return (
       <div className="flex flex-col min-h-screen w-full max-w-6xl mx-auto bg-gray-50">
         <PageHeader onBack={() => navigate(-1)} onRefresh={refetch} isFetching={true} />
         <div className="flex flex-col items-center justify-center flex-1 gap-4 px-8 text-center">
           <div className="w-16 h-16 border-4 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
           <p className="font-semibold text-gray-700">Evaluating all conditions…</p>
-          <p className="text-sm text-gray-500">Checking health · weather · flood · traffic · announcements</p>
+          <p className="text-sm text-gray-500">Checking weather · flood · traffic · announcements</p>
         </div>
       </div>
     );
@@ -400,13 +360,6 @@ export default function GoNoGoPage() {
         {/* Actions */}
         <div className="mx-4 mt-4 space-y-3">
           <button
-            type="button"
-            onClick={() => navigate('/app/health-check', { state: { editHealth: true } })}
-            className="w-full py-3.5 border-2 border-primary-600 text-primary-600 font-semibold rounded-2xl hover:bg-blue-50 transition-colors text-sm"
-          >
-            Update Health Check
-          </button>
-          <button
             onClick={() => navigate('/app/announcements')}
             className="w-full py-3.5 border-2 border-gray-200 text-gray-700 font-semibold rounded-2xl hover:bg-gray-50 transition-colors text-sm"
           >
@@ -439,46 +392,13 @@ function PageHeader({ onBack, onRefresh, isFetching }: {
   );
 }
 
-function buildOfflineGoNoGo(health: HealthCheck, weatherSnapshot: WeatherSnapshot): GoNoGoResult {
+function buildOfflineGoNoGo(weatherSnapshot: WeatherSnapshot): GoNoGoResult {
   const factors: GoNoGoFactor[] = [];
   let score = 100;
   let verdict: GoNoGoVerdict = 'GO';
   let primaryReason = 'All cached conditions are within safe range';
   const risk = weatherSnapshot.risk;
   const current = weatherSnapshot.current;
-
-  const severeHealth = health.overallFeeling === 'severe' || health.hasDifficulty || (health.hasFever && (health.feverTemp ?? 38) >= 39);
-  const sickHealth = health.overallFeeling === 'sick' || (health.hasFever && (health.feverTemp ?? 38) >= 38);
-  const mildHealth = health.overallFeeling === 'mild' || health.hasCough || health.hasSoreThroat
-    || health.hasFatigue || health.hasHeadache || health.hasBodyPain || health.hasVomiting;
-
-  if (severeHealth) {
-    factors.push({ category: 'HEALTH', label: 'Health Status', status: 'DANGER', detail: 'Severe symptoms reported - do not commute' });
-    score -= 100;
-    verdict = 'DO_NOT_GO';
-    primaryReason = 'Your health condition is too poor to commute safely';
-  } else if (sickHealth) {
-    factors.push({ category: 'HEALTH', label: 'Health Status', status: 'DANGER', detail: 'Feeling sick or feverish - commuting is risky' });
-    score -= 60;
-    verdict = 'OWN_RISK';
-    primaryReason = 'You are feeling unwell';
-  } else if (mildHealth) {
-    factors.push({ category: 'HEALTH', label: 'Health Status', status: 'CAUTION', detail: 'Mild symptoms reported - monitor your condition' });
-    score -= 20;
-    verdict = 'OWN_RISK';
-    primaryReason = 'You have mild symptoms today';
-  } else {
-    factors.push({ category: 'HEALTH', label: 'Health Status', status: 'OK', detail: 'Feeling well - no symptoms reported' });
-  }
-
-  if (health.hasChronicCondition) {
-    factors.push({ category: 'HEALTH', label: 'Chronic Condition', status: 'CAUTION', detail: 'Underlying condition - take extra care with heat and rain' });
-    score -= 10;
-    if (verdict === 'GO') {
-      verdict = 'OWN_RISK';
-      primaryReason = 'Underlying condition requires extra caution';
-    }
-  }
 
   if (risk.weather === 'HIGH') {
     factors.push({ category: 'WEATHER', label: 'Weather Risk', status: 'DANGER', detail: `Cached rain chance is high - ${current.precipitationProbability}%` });
@@ -538,7 +458,7 @@ function buildOfflineGoNoGo(health: HealthCheck, weatherSnapshot: WeatherSnapsho
   score = Math.max(0, Math.min(100, score));
 
   const recommendation = verdict === 'DO_NOT_GO'
-    ? 'Based on cached data and your health check, staying home is safest.'
+    ? 'Based on cached data, staying home is safest.'
     : verdict === 'OWN_RISK'
       ? 'Proceed with caution. This is based on cached offline data, so verify conditions when internet returns.'
       : 'Safe to go based on cached offline data. Recheck once internet is available.';
@@ -560,11 +480,6 @@ function buildOfflineGoNoGo(health: HealthCheck, weatherSnapshot: WeatherSnapsho
     schoolStatus: 'UNKNOWN',
     schoolTitle: null,
     govAdvisories: [],
-    healthSummary: {
-      overallFeeling: health.overallFeeling,
-      hasFever: health.hasFever,
-      hasChronicCondition: health.hasChronicCondition,
-    },
     evaluatedAt: new Date().toISOString(),
   };
 }
