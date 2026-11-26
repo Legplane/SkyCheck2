@@ -1,7 +1,7 @@
 import axios from 'axios';
 import type { CurrentWeather, HourlyForecast, RiskLevel } from '../types';
 import { RISK, getWeatherLabel, getWeatherIcon } from '../constants/risk';
-import { getCachedWeather, getStaleCachedWeather, setCachedWeather, type WeatherCachePayload } from './weatherCache';
+import { getCachedWeather, getStaleCachedWeather, setCachedWeather, type WeatherCachePayload, type WeatherSource } from './weatherCache';
 import {
   accuWeatherGeoposition,
   accuWeatherCurrent,
@@ -278,13 +278,34 @@ function timeLabelFromUnix(unixSeconds: number): string {
 }
 
 function accuWeatherRainProbability(h: AWHourly): number | undefined {
-  const candidates = [
-    h.RainProbability,
-    h.PrecipitationProbability,
-    h.ThunderstormProbability !== undefined ? Math.round(h.ThunderstormProbability * 0.8) : undefined,
-  ].filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
-  if (candidates.length === 0) return undefined;
-  return Math.max(...candidates.map(clampPercent));
+  // Use AccuWeather's own published precipitation probability so the app matches
+  // what AccuWeather shows. (Previously the max of rain / precip / thunderstorm x 0.8
+  // was taken, which could exceed AccuWeather's displayed value.)
+  const own = [h.PrecipitationProbability, h.RainProbability].find(
+    (value): value is number => typeof value === 'number' && Number.isFinite(value),
+  );
+  if (own !== undefined) return clampPercent(own);
+  if (typeof h.ThunderstormProbability === 'number' && Number.isFinite(h.ThunderstormProbability)) {
+    return clampPercent(h.ThunderstormProbability);
+  }
+  return undefined;
+}
+
+/**
+ * Rain probability when AccuWeather is the only source. Uses AccuWeather's own
+ * hourly probability as-is. Only if AccuWeather gives no probability do we
+ * estimate from the forecast liquid amount - never from a made-up constant.
+ */
+function accuWeatherDirectRainProbability(
+  awProbability: number | undefined,
+  nextHourLiquidMm: number,
+  hasPrecipitationNow: boolean,
+): number {
+  if (awProbability !== undefined) return clampPercent(awProbability);
+  if (nextHourLiquidMm >= 1) return 70;
+  if (nextHourLiquidMm >= 0.3) return 50;
+  if (nextHourLiquidMm >= 0.1 || hasPrecipitationNow) return 30;
+  return 0;
 }
 
 function blendedStreetRainProbability(args: {
@@ -460,13 +481,11 @@ function buildAccuWeatherOnlyForecast(
       awCurrent.RelativeHumidity,
     ),
     humidity:                 clampPercent(awCurrent.RelativeHumidity),
-    precipitationProbability: blendedStreetRainProbability({
-      openMeteoProbability: awCurrent.HasPrecipitation ? 65 : 0,
-      accuWeatherProbability: nextHrRainProb,
-      liquidMm: precipMm,
-      weatherCode: wmo,
-      cloudCover: nextHr?.CloudCover,
-    }),
+    precipitationProbability: accuWeatherDirectRainProbability(
+      nextHrRainProb,
+      nextHrLiquid,
+      Boolean(awCurrent.HasPrecipitation),
+    ),
     precipitation:            roundOne(precipMm),
     windSpeed:                Math.round(awCurrent.Wind.Speed.Metric.Value),
     weatherCode:              wmo,
@@ -487,13 +506,7 @@ function buildAccuWeatherOnlyForecast(
       temperature: roundOne(h.Temperature.Value),
       weatherCode: code,
       weatherIcon: getWeatherIcon(code),
-      precipitationProbability: blendedStreetRainProbability({
-        openMeteoProbability: isRainCode(code) ? 45 : 0,
-        accuWeatherProbability: awProb,
-        liquidMm,
-        weatherCode: code,
-        cloudCover: h.CloudCover,
-      }),
+      precipitationProbability: accuWeatherDirectRainProbability(awProb, liquidMm, false),
     });
     if (hourly.length >= 6) break;
   }
@@ -690,6 +703,7 @@ export async function fetchWeatherData(lat: number, lon: number): Promise<{
   hourly: HourlyForecast[];
   weatherRisk: RiskLevel;
   providerPlaceName?: string;
+  source?: WeatherSource;
 }> {
   const cityLat = OLONGAPO_CITY_CENTER.lat;
   const cityLon = OLONGAPO_CITY_CENTER.lon;
@@ -700,6 +714,7 @@ export async function fetchWeatherData(lat: number, lon: number): Promise<{
       hourly:               cached.hourly,
       weatherRisk:          cached.weatherRisk,
       ...(cached.providerPlaceName ? { providerPlaceName: cached.providerPlaceName } : {}),
+      ...(cached.source ? { source: cached.source } : {}),
     };
   }
 
@@ -712,7 +727,9 @@ export async function fetchWeatherData(lat: number, lon: number): Promise<{
         hourly: awOnly.hourly,
         weatherRisk: evaluateWeatherRisk(awOnly.current),
         providerPlaceName: awOnly.providerPlaceName || OLONGAPO_CITY_CENTER.name,
+        source: 'accuweather',
       };
+      console.log(`[Weather] AccuWeather rain probability ${awOnly.current.precipitationProbability}% (precip ${awOnly.current.precipitation}mm)`);
       setCachedWeather(cityLat, cityLon, payload);
       return payload;
     }
@@ -720,6 +737,7 @@ export async function fetchWeatherData(lat: number, lon: number): Promise<{
 
   let om: { current: CurrentWeather; hourly: HourlyForecast[] } | undefined;
   let providerName = OLONGAPO_CITY_CENTER.name;
+  let source: WeatherSource = 'open-meteo';
   let primaryErr: unknown;
   try {
     om = await fetchOpenMeteoForecast(cityLat, cityLon);
@@ -734,6 +752,7 @@ export async function fetchWeatherData(lat: number, lon: number): Promise<{
   if (!om) {
     try {
       om = await fetchMetNorwayForecast(cityLat, cityLon);
+      source = 'met-norway';
       console.log('[Weather] Served from MET Norway fallback');
     } catch (err) {
       console.warn('[Weather] MET Norway fallback failed:', (err as Error).message);
@@ -749,6 +768,7 @@ export async function fetchWeatherData(lat: number, lon: number): Promise<{
         hourly: stale.hourly,
         weatherRisk: stale.weatherRisk,
         ...(stale.providerPlaceName ? { providerPlaceName: stale.providerPlaceName } : {}),
+        ...(stale.source ? { source: stale.source } : {}),
       };
     }
     throw primaryErr ?? new Error('No weather provider available');
@@ -759,7 +779,9 @@ export async function fetchWeatherData(lat: number, lon: number): Promise<{
     hourly: om.hourly,
     weatherRisk: evaluateWeatherRisk(om.current),
     providerPlaceName: providerName,
+    source,
   };
+  console.log(`[Weather] ${source} rain probability ${om.current.precipitationProbability}% (precip ${om.current.precipitation}mm)`);
 
   setCachedWeather(cityLat, cityLon, payload);
   return payload;

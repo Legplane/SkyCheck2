@@ -11,12 +11,16 @@
 
 import type { CurrentWeather, HourlyForecast, RiskLevel } from '../types';
 
+export type WeatherSource = 'accuweather' | 'open-meteo' | 'met-norway';
+
 interface CachedWeather {
   current:     CurrentWeather;
   hourly:      HourlyForecast[];
   weatherRisk: RiskLevel;
   /** AccuWeather locality when that provider supplied the banner name */
   providerPlaceName?: string;
+  /** Which provider produced this reading */
+  source?: WeatherSource;
   cachedAt:   number;  // Date.now()
 }
 

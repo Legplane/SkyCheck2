@@ -79,13 +79,13 @@ function buildFloodAssessmentFactor(input: GoNoGoInput): GoNoGoFactor {
       label: 'Flood Risk',
       status: 'DANGER',
       detail:
-        `Heavy inundation potential — rain ${rain}%, ~${roundMm(mm)}mm recent precip.${geo}`,
+        `Heavy inundation potential — ~${roundMm(mm)}mm rainfall (rain chance ${rain}%).${geo}`,
     };
   }
 
   if (input.floodRisk === 'MEDIUM') {
     const geo = elevKnown
-      ? ` ~${elev}m ASL (≤${F.ELEV_MED}m moderate belt); crosses PH flood-calibrated thresholds at rain ≥${F.RAIN_PROB_MED}% / precip ≥${F.PRECIP_MED}mm.`
+      ? ` ~${elev}m ASL (≤${F.ELEV_MED}m moderate belt); low-lying area with measurable rainfall (~${roundMm(mm)}mm, threshold ${F.PRECIP_MED}mm).`
       : ` Rain ${rain}% · ~${roundMm(mm)}mm — watch usual ponding spots.`;
     return {
       category: 'FLOOD',

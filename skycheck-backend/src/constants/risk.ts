@@ -49,10 +49,10 @@ export const RISK = {
     ELEV_MED:   20,   // ≤20m = moderate flood zone (lower Subic, riverine Zambales)
 
     // Rainfall triggers
-    RAIN_PROB_HIGH: 70,   // % → significant flood risk
-    RAIN_PROB_MED:  45,   // %
+    RAIN_PROB_HIGH: 70,   // % → confirming signal only; probability alone never raises flood risk
     PRECIP_HIGH:     8,   // mm accumulated → heavy runoff
     PRECIP_MED:      3,   // mm
+    PRECIP_LIGHT:    1,   // mm
   },
   ROUTE:  { MAX_PER_USER: 5, CRON_INTERVAL_MIN: 15 },
   AUTH:   { MAX_FAILED: 5, LOCK_MINUTES: 15, JWT_EXPIRE: '24h', VERIFY_EXPIRE_H: 24, RESET_EXPIRE_H: 1 },

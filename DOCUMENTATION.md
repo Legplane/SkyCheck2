@@ -186,6 +186,8 @@ Provider order:
 3. **MET Norway** if Open-Meteo fails or is rate-limited (Open-Meteo gets a 30-minute cooldown after a 429).
 4. **Stale cache** (up to 6 hours old) if every provider is down.
 
+The rain probability shown is AccuWeather's own hourly precipitation probability when AccuWeather is the source (no blending or inflation). The dashboard shows which provider supplied the reading (`Data: AccuWeather`, `Open-Meteo`, or `MET Norway`), and the backend logs the value on each fetch.
+
 Collected weather variables include temperature, apparent temperature (feels-like), humidity, rain probability, precipitation, wind speed and gusts, weather code, and an hourly forecast (the dashboard shows the next 6 hours). With Open-Meteo, rain probability is calibrated using precipitation, cloud cover, and 15-minute precipitation signals.
 
 ### Accuracy and PAGASA
@@ -249,17 +251,19 @@ The UI shows the source: `TomTom` when live data is used, `time based` for the h
 Flood risk is estimated using:
 
 - Elevation (OpenTopoData SRTM 30 m)
-- Rain probability
-- Recent precipitation
+- Rainfall amount in mm (current and next-hour forecast)
+- Rain probability, only as a confirming signal
 - Route start and destination points
 
 For routes, both endpoints are evaluated and the worse result is used.
 
+**Rainfall amount is required.** A high chance of rain with no expected rainfall never raises flood risk. For example, 65% rain probability with 0 mm gives `LOW`.
+
 Thresholds (calibrated for Central Luzon):
 
-- Elevation at or below 8 m: high flood zone
-- Elevation at or below 20 m: moderate flood zone
-- Rain probability of 70% or more, or 8 mm or more precipitation: strong runoff concern
+- Elevation at or below 8 m: low-lying zone. 8 mm or more rainfall gives `HIGH`; 3 mm or more (or 1 mm or more with a 70% or higher chance) gives `MEDIUM`.
+- Elevation at or below 20 m: moderate zone. 8 mm or more gives `MEDIUM`, or `HIGH` if the chance is also 70% or higher.
+- Above 20 m: `LOW`.
 
 Flood risk categories are `LOW`, `MEDIUM`, `HIGH`, and `UNKNOWN`. `UNKNOWN` is used when the elevation service is unavailable. Elevation lookups are cached and throttled to stay within the free API limits.
 

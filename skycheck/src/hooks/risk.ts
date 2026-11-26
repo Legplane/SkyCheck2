@@ -22,8 +22,9 @@ export const RISK = {
     ELEV_HIGH:       8,
     ELEV_MED:       20,
     RAIN_PROB_HIGH: 70,
-    RAIN_PROB_MED:  45,
     PRECIP_HIGH:     8,
+    PRECIP_MED:      3,
+    PRECIP_LIGHT:    1,
   },
 } as const;
 

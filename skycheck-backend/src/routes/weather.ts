@@ -36,7 +36,7 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
 
     // Weather and risk are city-level for stable provider matching.
     // Display location still comes from the user's GPS point.
-    const [{ current, hourly, providerPlaceName }, nominatim] = await Promise.all([
+    const [{ current, hourly, providerPlaceName, source }, nominatim] = await Promise.all([
       fetchWeatherData(lat, lon),
       resolvePhLocation(lat, lon),
     ]);
@@ -70,6 +70,7 @@ router.get('/', requireAuth, async (req: Request, res: Response) => {
       hourly,
       risk,
       commuteTips,
+      ...(source ? { source } : {}),
     });
   } catch (err) {
     console.error('[Weather] Error:', err);

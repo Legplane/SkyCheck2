@@ -182,7 +182,10 @@ export default function DashboardPage() {
     );
   }
 
-  const { current, hourly, risk, commuteTips, location } = data;
+  const { current, hourly, risk, commuteTips, location, source } = data;
+  const sourceLabel = source === 'accuweather' ? 'AccuWeather'
+    : source === 'open-meteo' ? 'Open-Meteo'
+    : source === 'met-norway' ? 'MET Norway' : null;
   const hasTrustedGps = status === 'granted';
   const displayLocation = hasTrustedGps ? (location || CITY_WEATHER_LABEL) : CITY_WEATHER_LABEL;
 
@@ -214,6 +217,9 @@ export default function DashboardPage() {
               </span>
               {hasTrustedGps && accuracy > 0 && (
                 <span className="text-[11px] text-gray-400">GPS pin identifies your barangay/street</span>
+              )}
+              {sourceLabel && (
+                <span className="text-[11px] text-gray-400">Data: {sourceLabel}</span>
               )}
             </div>
           </div>

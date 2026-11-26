@@ -24,10 +24,10 @@ const FLOOD_THRESHOLDS = {
   MODERATE_ELEV: 20,    // below this = MEDIUM flood zone (lower Subic, riverine Zambales)
   // above 20m = LOW regardless of rain (upland areas)
 
-  RAIN_HIGH_PROB: 70,   // % precipitation probability → HIGH concern
-  RAIN_MED_PROB:  45,   // % → MEDIUM concern
+  RAIN_HIGH_PROB: 70,   // % chance - only a confirming signal, never enough by itself
   HEAVY_PRECIP:    8,   // mm accumulated → significant runoff
   MOD_PRECIP:      3,   // mm → moderate runoff
+  LIGHT_PRECIP:    1,   // mm → light rain; matters only if likely to persist
 };
 
 interface ElevationPoint {
@@ -202,6 +202,9 @@ export async function evaluateRouteFloodRisk(
 }
 
 // ── Core flood risk calculation ───────────────────────────────────
+// Flooding needs water actually falling (or about to fall), not just a chance
+// of rain. A rain *probability* alone - e.g. 65% with 0 mm expected - must
+// never raise flood risk, so every level below requires a rainfall amount.
 export function calcFloodRisk(
   elevation: number,
   rainProbability: number,
@@ -209,24 +212,24 @@ export function calcFloodRisk(
 ): RiskLevel {
   const T = FLOOD_THRESHOLDS;
 
-  const isCriticalZone  = elevation <= T.CRITICAL_ELEV;
-  const isModerateZone  = elevation <= T.MODERATE_ELEV;
-  const isHighRain      = rainProbability >= T.RAIN_HIGH_PROB;
-  const isMedRain       = rainProbability >= T.RAIN_MED_PROB;
-  const isHeavyPrecip   = precipMm >= T.HEAVY_PRECIP;
-  const isModPrecip     = precipMm >= T.MOD_PRECIP;
+  const isCriticalZone = elevation <= T.CRITICAL_ELEV;
+  const isModerateZone = elevation <= T.MODERATE_ELEV;
+  const isLikelyRain   = rainProbability >= T.RAIN_HIGH_PROB;
+  const isHeavyPrecip  = precipMm >= T.HEAVY_PRECIP;
+  const isModPrecip    = precipMm >= T.MOD_PRECIP;
+  const isLightPrecip  = precipMm >= T.LIGHT_PRECIP;
 
-  // HIGH: critical flood zone + heavy rain or already raining
-  if (isCriticalZone && (isHighRain || isHeavyPrecip)) return 'HIGH';
+  // HIGH: low-lying zone with heavy rainfall
+  if (isCriticalZone && isHeavyPrecip) return 'HIGH';
 
-  // HIGH: moderate zone + very heavy ongoing rain
-  if (isModerateZone && isHighRain && isHeavyPrecip) return 'HIGH';
+  // HIGH: moderate zone with heavy rainfall that is also likely to continue
+  if (isModerateZone && isHeavyPrecip && isLikelyRain) return 'HIGH';
 
-  // MEDIUM: critical zone + any meaningful rain
-  if (isCriticalZone && (isMedRain || isModPrecip)) return 'MEDIUM';
+  // MEDIUM: low-lying zone with moderate rainfall, or lighter rain likely to persist
+  if (isCriticalZone && (isModPrecip || (isLightPrecip && isLikelyRain))) return 'MEDIUM';
 
-  // MEDIUM: moderate zone + moderate rain
-  if (isModerateZone && isMedRain) return 'MEDIUM';
+  // MEDIUM: moderate zone with heavy rainfall
+  if (isModerateZone && isHeavyPrecip) return 'MEDIUM';
 
   return 'LOW';
 }

@@ -79,6 +79,8 @@ export interface WeatherSnapshot {
   hourly: HourlyForecast[];
   risk: CombinedRisk;
   commuteTips: string[];
+  /** Weather provider that produced this reading */
+  source?: 'accuweather' | 'open-meteo' | 'met-norway';
 }
 
 // ── Routes ────────────────────────────────────────────────────────
