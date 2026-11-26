@@ -1,8 +1,8 @@
 # SkyCheck
 
-SkyCheck is a Progressive Web App for student commuters that helps answer one daily question: **is it safe and practical to go to school today?**
+SkyCheck is a Progressive Web App for student commuters that helps answer one daily question: **is it safe and practical to go to Gordon College today?**
 
-The app combines weather, traffic, flood risk, route data, school advisories, government advisories into a simple Go / No-Go decision. It is designed for students around Gordon College and nearby Philippine commute routes, where rain, heat, flooding, traffic, and class announcements can quickly affect travel safety.
+The app combines weather, traffic, flood risk, route data, school announcements, and government advisories into a simple Go / No-Go decision. It is built for students commuting to Gordon College (Olongapo City) from within Olongapo, Subic, and Bataan, where rain, heat, flooding, traffic, and class announcements can quickly affect travel.
 
 ## Live Deployment
 
@@ -11,29 +11,35 @@ The app combines weather, traffic, flood risk, route data, school advisories, go
 
 ## Main Features
 
-- Firebase authentication with email/password and Google sign-in
-- Email verification and password reset
-- Real-time weather dashboard using Open-Meteo with optional AccuWeather fallback
-- GPS-based location tracking with automatic Subic fallback when precise location is unavailable
-- Live or estimated traffic risk using TomTom Traffic API with rush-hour fallback
-- Route-aware traffic from TomTom Routing (live vs free-flow travel time along the real road path), falling back to TomTom flow sampling, with low/moderate/high display
-- Route saving with distance, travel time, multi-mode fare estimates, student/PWD/senior discounts, and risk status
-- Smart combined risk messages that explain whether weather/heat, traffic, flood risk, or a mix of them is causing the warning
-- Street-level route map preview using Leaflet, MapTiler/OpenStreetMap tiles, and closer route zoom
+- Firebase authentication with email/password and Google sign-in, email verification, and password reset
+- Account lockout after repeated failed logins and rate limiting on sensitive auth endpoints
+- Weather dashboard (current conditions, 6-hour forecast, commute tips) for Olongapo, with AccuWeather as the primary provider when configured, and Open-Meteo and MET Norway as fallbacks
+- GPS-based location with an automatic Olongapo fallback when precise or in-area location is unavailable
+- Traffic risk from TomTom: route-aware travel time (live vs free-flow) for saved routes, area flow sampling for the dashboard, and a time-based rush-hour estimate when TomTom is unavailable
+- **Fixed destination: Gordon College.** Users choose only the starting point, either with a "use my current location" button (GPS plus reverse geocoding) or by typing an address
+- Route saving (up to 5 per user) with distance, travel time, multi-mode fare estimates, student/PWD/senior discounted fares, and route risk status
+- Coverage-area limit: starting points must be inside Olongapo, Subic, and Bataan
+- Smart combined risk messages that explain whether weather/heat, traffic, flood, or a mix is causing the warning
+- Route map preview using Leaflet with MapTiler or OpenStreetMap tiles
 - Flood risk estimation using elevation and rain indicators
-- Go / No-Go decision engine based on health, weather, traffic, flood, heat, advisories, and selected route risk when available
-- School and government announcement support
+- Go / No-Go decision engine based on weather, flood, traffic, heat index, school status, government advisories, and the selected route's risk
+- School and government announcements shown in the app
+- Alerts with per-user preferences (morning alerts, sound, vibration)
 - PWA install support for mobile
-- Offline mode with cached weather, cached saved routes, and offline Go / No-Go estimate
-- Responsive UI for phone, tablet, laptop, and desktop, including mobile-safe route cards that avoid cropped route/fare text
+- Offline mode with cached weather, cached saved routes, and an offline Go / No-Go estimate
+- Responsive UI for phone, tablet, laptop, and desktop
+
+### Not included
+
+- **Health assessment.** The daily symptom self-check was removed because self-reported answers can be easily manipulated or invalidated, so it was not a reliable input.
+- **Direct PAGASA / Panahon data.** Weather values come from commercial and open weather APIs, not from PAGASA. PAGASA is used only as a reference for risk thresholds (heat index bands, wind levels). See [Weather data sources](#weather-data-sources).
+- **Google Maps traffic.** Google's traffic-aware routing needs a billing account, so TomTom is used instead. See [DOCUMENTATION.md](./DOCUMENTATION.md) for the trade-offs.
 
 ## Technology Stack
 
 ### Frontend
 
-- React 18
-- TypeScript
-- Vite
+- React 18, TypeScript, Vite
 - Tailwind CSS
 - React Router
 - TanStack Query with persisted cache
@@ -44,27 +50,37 @@ The app combines weather, traffic, flood risk, route data, school advisories, go
 
 ### Backend
 
-- Node.js
-- Express
-- TypeScript
-- Prisma ORM
-- PostgreSQL / Neon
-- Firebase Admin SDK
+- Node.js, Express, TypeScript
+- Prisma ORM with PostgreSQL (Neon)
+- Firebase Admin SDK and Google Auth Library
 - JWT session issuing
-- Node Cron for scheduled route risk checks
+- Nodemailer (verification and reset emails)
+- Node Cron for scheduled route risk checks and morning alerts
 
 ### External Services
 
-- Firebase Authentication
-- Neon PostgreSQL
-- Open-Meteo Weather API
-- AccuWeather API
-- TomTom Traffic API
-- OpenStreetMap Nominatim
-- OpenTopoData
-- MapTiler
-- Vercel
-- Render
+| Purpose | Service |
+|---|---|
+| Authentication | Firebase Authentication, Google Sign-In |
+| Database | Neon PostgreSQL |
+| Weather | AccuWeather (primary, optional), Open-Meteo, MET Norway |
+| Traffic | TomTom Traffic Flow and Routing |
+| Route distance / time | OpenRouteService, with OSRM and straight-line fallbacks |
+| Elevation (flood risk) | OpenTopoData, Open-Meteo elevation |
+| Address search / reverse geocoding | OpenStreetMap Nominatim |
+| Map tiles | MapTiler, OpenStreetMap |
+| Hosting | Vercel (frontend), Render (backend) |
+
+## Weather data sources
+
+The backend fetches weather for the Olongapo city center and caches it for 15 minutes, so every user in the service area sees the same city-level reading. Provider order:
+
+1. **AccuWeather**, when `ACCUWEATHER_API_KEY` is set (with a daily request budget and quota cooldown)
+2. **Open-Meteo**, if AccuWeather is not configured or fails
+3. **MET Norway**, if Open-Meteo fails or is rate-limited
+4. **Stale cache** (up to 6 hours old), if every provider is down
+
+PAGASA publishes no official public weather API, so PAGASA data is not fetched. Risk thresholds follow PAGASA's heat index scale and wind levels. Official PAGASA and local government advisories can be entered as government announcements, which feed the Go / No-Go decision.
 
 ## Project Structure
 
@@ -96,6 +112,8 @@ npm run db:generate
 npm run dev
 ```
 
+To test GPS on a phone over your local network, run the frontend with `npm run dev:https` (browsers require HTTPS for GPS).
+
 ## Required Environment Variables
 
 ### Frontend - Vercel / `skycheck/.env`
@@ -122,12 +140,15 @@ FRONTEND_URL=https://sky-check2-hcxk.vercel.app
 FIREBASE_PROJECT_ID=
 FIREBASE_CLIENT_EMAIL=
 FIREBASE_PRIVATE_KEY=
+GOOGLE_CLIENT_ID=
 EMAIL_USER=
 EMAIL_PASS=
 ORS_API_KEY=
 TOMTOM_API_KEY=
 ACCUWEATHER_API_KEY=
 ```
+
+Optional backend variables (`SMTP_*`, `EMAIL_FROM`, `EXTRA_ORIGINS`, `ACTIVE_USER_WINDOW_MINUTES`, `ACCUWEATHER_*`, `MET_NO_USER_AGENT`, `DISABLE_CRON`, `REQUIRE_EMAIL_VERIFICATION`) are listed in [DOCUMENTATION.md](./DOCUMENTATION.md).
 
 ## Deployment
 
@@ -141,18 +162,17 @@ ACCUWEATHER_API_KEY=
 
 - Root directory: `skycheck-backend`
 - Build command: `npm install --include=dev && npm run build`
-- Start command: `npm start`
+- Start command: `npm start` (runs `prisma migrate deploy` first)
 
 ## Offline Behavior
 
-SkyCheck is a PWA and stores selected query data locally.
+SkyCheck is a PWA and stores selected query data locally for up to 24 hours.
 
 When offline, users can:
 
 - View the last cached weather dashboard
 - View saved routes from the last successful route fetch
-- Open the Go / No-Go screen locally
-- Generate a Go / No-Go estimate using cached weather
+- Open the Go / No-Go screen and get an estimate based on cached weather
 
 When offline, users cannot:
 
@@ -162,17 +182,14 @@ When offline, users cannot:
 
 ## GPS And Location Behavior
 
-SkyCheck first asks the user to grant GPS access. If precise tracking succeeds, the dashboard fetches weather and risk information for the user's live coordinates and shows a `Live +/-Xm` badge.
+SkyCheck asks for GPS access and only trusts a fix that is precise enough and inside the coverage area (Olongapo, Subic, Bataan). If the fix is trusted, the dashboard shows a `Live +/-Xm` badge and uses your coordinates for the location label and the "use my current location" start point.
 
-If precise tracking fails, is blocked, or is unavailable on a PC/laptop, the app automatically uses the Subic fallback coordinates:
+If GPS is denied, unavailable, too imprecise, or outside the coverage area, the app falls back to Olongapo and tells the user:
 
-- Fallback location: `Subic, Zambales, Central Luzon, PH`
-- Fallback coordinates: `14.8799, 120.2343`
-- The dashboard location label changes to the fallback area.
-- Weather, traffic, flood, and risk data are fetched for the fallback area.
-- The user is notified that precise location could not be found and that mobile GPS is recommended for better accuracy.
+- Fallback location: `Olongapo, Zambales, Central Luzon`
+- Fallback coordinates: `14.8386, 120.2842`
 
-Mobile devices are generally more accurate because they usually have real GPS hardware. PC/laptop browsers often depend on Wi-Fi or IP-based location, which can be rough or unavailable.
+Mobile devices are generally more accurate because they have real GPS hardware. PC/laptop browsers often use Wi-Fi or IP-based location, which can be rough or unavailable. In that case the user can type their starting point when adding a route.
 
 ## Documentation
 

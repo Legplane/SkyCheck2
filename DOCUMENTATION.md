@@ -2,19 +2,17 @@
 
 ## 1. Project Overview
 
-SkyCheck is a student commute decision-support system. It helps users decide whether they should go to school, proceed with caution, or avoid travel based on real-world conditions.
+SkyCheck is a student commute decision-support system for Gordon College. It helps users decide whether they should go to school, proceed with caution, or avoid travel based on real-world conditions.
 
 The system does not only show weather. It combines several commuter risk factors:
 
-- Weather condition
-- Rain probability
+- Weather condition and rain probability
 - Heat index
 - Traffic condition
 - Flood risk
 - Saved route information
 - School announcements
 - Government advisories
-- User health status
 
 The final output is a Go / No-Go decision:
 
@@ -26,15 +24,15 @@ The app also shows combined risk messages. Instead of saying "severe weather" fo
 
 ## 2. Problem Solved
 
-Students often decide whether to go to school using incomplete information. Weather apps may show rain but not commute risk. Traffic apps may show road speed but not health or class status. School announcements may be separate from weather warnings.
+Students often decide whether to go to school using incomplete information. Weather apps may show rain but not commute risk. Traffic apps may show road speed but not class status. School announcements may be separate from weather warnings.
 
-SkyCheck solves this by bringing those factors into one mobile-first app.
+SkyCheck brings those factors into one mobile-first app.
 
 The problem areas addressed are:
 
 - Sudden rain affecting student commuters
 - Flood-prone routes
-- Heat index and health risk
+- Heat index and heat-related risk
 - Traffic delays
 - Lack of one place for commute-related decisions
 - Low-connectivity situations where users still need their last known data
@@ -44,29 +42,27 @@ The problem areas addressed are:
 Primary users:
 
 - Gordon College students
-- Student commuters in Olongapo, Subic, and nearby areas
+- Student commuters in Olongapo, Subic, and Bataan
 - Users who depend on walking, public transport, motorcycles, or ride-hailing
 
 Secondary users:
 
 - School offices that post class status
-- Students with health concerns
 - Parents or guardians checking commute risk
 
 ## 4. Unique Value Proposition
 
-SkyCheck is unique because it is not just a weather app. It is a context-aware student commute assistant.
+SkyCheck is not just a weather app. It is a context-aware student commute assistant.
 
-Its unique value is the combination of:
+Its value is the combination of:
 
 - Weather risk
 - Traffic risk
 - Flood risk
 - Heat index
-- User health check
 - Class status
 - Government advisories
-- Saved route monitoring
+- Saved route monitoring with background risk checks
 - Multi-transport fare estimates with regular and student/PWD/senior discounted fares
 - Cause-aware risk explanations for weather/heat, traffic, flood, and mixed-risk combinations
 - Offline cached decision support
@@ -81,12 +77,15 @@ flowchart TD
   Frontend --> Firebase["Firebase Auth"]
   Frontend --> Backend["Express Backend API"]
   Frontend --> Cache["Local PWA Cache"]
+  Frontend --> Nominatim["OpenStreetMap Nominatim"]
+  Backend --> Nominatim
   Backend --> Neon["Neon PostgreSQL"]
-  Backend --> OpenMeteo["Open-Meteo"]
   Backend --> AccuWeather["AccuWeather"]
-  Backend --> TomTom["TomTom Traffic"]
+  Backend --> OpenMeteo["Open-Meteo"]
+  Backend --> MetNo["MET Norway"]
+  Backend --> TomTom["TomTom Traffic + Routing"]
+  Backend --> ORS["OpenRouteService / OSRM"]
   Backend --> Topo["OpenTopoData"]
-  Backend --> Nominatim["OpenStreetMap Nominatim"]
   Backend --> RiskEngine["Risk + Go/No-Go Engine"]
   RiskEngine --> Backend
   Backend --> Frontend
@@ -99,22 +98,24 @@ The frontend is located in `skycheck/`.
 Main frontend responsibilities:
 
 - User interface
-- Firebase login/signup/forgot password
-- Storing JWT session from the backend
-- Fetching dashboard, routes, health, alerts, and Go / No-Go results
-- Persisting selected query data for offline mode
+- Firebase login, signup, email verification, and password reset
+- Storing the JWT session from the backend
+- Fetching dashboard weather, routes, alerts, announcements, and Go / No-Go results
+- Persisting selected query data for offline mode (24-hour cache)
 - Registering the PWA service worker
 - Showing responsive layouts for mobile and desktop
-- Requesting GPS access and applying the Subic fallback when precise location is unavailable
+- Requesting GPS access and applying the Olongapo fallback when a trusted in-area fix is unavailable
+- Letting the user pick a starting point (current location or typed address) for routes to Gordon College
+
+App screens (bottom navigation): Home (dashboard), Routes, Go/No-Go, Alerts, Profile. Announcements are reachable from the app as a separate page.
 
 Important frontend tools:
 
 - React for UI
 - Vite for build tooling
 - Tailwind CSS for styling
-- TanStack Query for API state and caching
-- TanStack Query persister for local cache persistence
-- Zustand for lightweight app state
+- TanStack Query and its persister for API state and local caching
+- Zustand for lightweight app state (auth, GPS)
 - Firebase SDK for authentication
 - Leaflet for maps
 
@@ -125,196 +126,216 @@ The backend is located in `skycheck-backend/`.
 Main backend responsibilities:
 
 - REST API
-- Firebase token verification
+- Firebase and Google token verification
 - JWT session issuing
-- User, route, alert, and health data storage
-- Weather aggregation
+- User, route, alert, and announcement data storage
+- Weather aggregation with provider fallback
 - Traffic lookup
 - Flood risk lookup
 - Go / No-Go evaluation
-- Scheduled risk checks for saved routes
+- Scheduled risk checks for saved routes and morning alerts
+- Verification and password-reset emails
 
 Important backend tools:
 
-- Express for API routing
+- Express for API routing, with CORS and rate limiting
 - Prisma for database access
 - PostgreSQL / Neon for persistence
-- Firebase Admin SDK for verifying Firebase ID tokens
-- JSON Web Tokens for app session tokens
-- Node Cron for scheduled checks
+- Firebase Admin SDK and Google Auth Library for verifying ID tokens
+- JSON Web Tokens for app session tokens (24-hour expiry)
+- Node Cron for scheduled jobs
+- Nodemailer for email (Gmail or custom SMTP)
 
 ## 8. Authentication Flow
 
-SkyCheck uses Firebase Authentication for the identity layer.
+SkyCheck uses Firebase Authentication for the identity layer, plus its own JWT session.
 
 Supported sign-in methods:
 
 - Email and password
 - Google sign-in
-- Password reset through Firebase
+- Password reset
 - Email verification for manual signup
 
 Flow:
 
-1. User signs in through Firebase.
-2. Firebase returns an ID token.
-3. Frontend sends the Firebase ID token to the backend.
-4. Backend verifies the token using Firebase Admin SDK.
-5. Backend finds or creates the user in PostgreSQL.
-6. Backend returns a SkyCheck JWT.
-7. Frontend uses the JWT for protected API requests.
+1. User signs in through Firebase (or Google).
+2. The frontend sends the ID token to the backend (`/auth/firebase` or `/auth/google`).
+3. Backend verifies the token.
+4. Backend finds or creates the user in PostgreSQL.
+5. Backend returns a SkyCheck JWT.
+6. Frontend uses the JWT for protected API requests.
 
-This keeps authentication secure while still allowing SkyCheck to store its own user-specific data.
+Security measures:
+
+- After 5 failed email/password logins, the account is locked for 15 minutes.
+- Login, password-reset, and other sensitive endpoints are rate limited.
+- Verification links expire after 24 hours and reset links after 1 hour.
+- The backend records when a user was last active, which limits background work to active users (see section 13).
 
 ## 9. Weather System
 
-SkyCheck primarily uses Open-Meteo for weather data.
+### Providers and fallback order
 
-Collected weather variables include:
+The backend fetches weather for the Olongapo city center and caches it for 15 minutes. All users in the service area therefore see the same city-level weather, which keeps provider results stable and reduces API usage.
 
-- Temperature
-- Apparent temperature / feels-like
-- Humidity
-- Rain probability
-- Precipitation
-- Wind speed
-- Wind gust
-- Weather code
-- Hourly forecast
-- 15-minute precipitation signals
+Provider order:
 
-AccuWeather is used as an optional enhancer and fallback.
+1. **AccuWeather** when `ACCUWEATHER_API_KEY` is set. It has a daily request budget (default 40) and a cooldown when the quota is hit.
+2. **Open-Meteo** if AccuWeather is not configured or fails.
+3. **MET Norway** if Open-Meteo fails or is rate-limited (Open-Meteo gets a 30-minute cooldown after a 429).
+4. **Stale cache** (up to 6 hours old) if every provider is down.
 
-Weather behavior:
+Collected weather variables include temperature, apparent temperature (feels-like), humidity, rain probability, precipitation, wind speed and gusts, weather code, and an hourly forecast (the dashboard shows the next 6 hours). With Open-Meteo, rain probability is calibrated using precipitation, cloud cover, and 15-minute precipitation signals.
 
-- Open-Meteo is used first.
-- AccuWeather can improve current conditions and hourly probability.
-- If Open-Meteo fails or is rate-limited, AccuWeather can be used as fallback.
-- If AccuWeather quota/key fails, the app falls back to Open-Meteo when available.
-- Weather is cached server-side to reduce API usage.
+### Accuracy and PAGASA
 
-### Location behavior for weather
+PAGASA has no official public weather API, so SkyCheck does **not** fetch data from PAGASA or Panahon.gov.ph. The weather values come from the providers above.
 
-The Dashboard first asks the user to grant GPS access.
+PAGASA is used in two other ways:
 
-If precise GPS succeeds:
+- Risk thresholds follow PAGASA references: the heat index bands (33°C and above is "Extreme Caution", 42°C and above is "Danger") and wind levels.
+- PAGASA and other official advisories can be recorded as government announcements (source `PAGASA`, `NDRRMC`, `LGU_OLONGAPO`, and others). These are entered through the announcements API, not fetched automatically, and they feed the Go / No-Go decision.
 
-- Weather is fetched for the user's current coordinates.
-- The dashboard shows the geocoded place name.
-- A `Live +/-Xm` badge communicates the browser-reported accuracy.
+Because the weather is city-level model data, it can differ from conditions on a specific street. Treat PAGASA bulletins as the official source during severe weather.
 
-If precise GPS fails, is blocked, unsupported, or too imprecise:
+### Location behavior
 
-- SkyCheck automatically uses the fallback area: `Subic, Zambales, Central Luzon, PH`.
-- Fallback coordinates are `14.8799, 120.2343`.
-- The Home screen location label changes to `Subic, Zambales, Central Luzon, PH`.
-- Weather and risk information are fetched for the fallback coordinates.
-- The user is notified that precise location was unavailable and that mobile GPS is recommended for better accuracy.
+The dashboard asks the user for GPS access and only trusts a fix that is precise enough (about 300 m or better) and inside the coverage area.
 
-This keeps the app useful on PC/laptop devices where browsers may only provide rough Wi-Fi/IP-based location.
+If GPS succeeds:
+
+- The dashboard shows the geocoded place name for the user's position.
+- A `Live +/-Xm` badge shows the browser-reported accuracy.
+- The "use my current location" button can fill the route starting point.
+
+If GPS is denied, unsupported, too imprecise, or outside the coverage area:
+
+- SkyCheck uses the fallback `Olongapo, Zambales, Central Luzon` at `14.8386, 120.2842`.
+- The user is told that precise location was unavailable and that mobile GPS is recommended.
+
+This keeps the app useful on PC/laptop browsers, which may only provide rough Wi-Fi or IP-based location.
 
 ## 10. Traffic System
 
-SkyCheck uses TomTom Traffic Flow API when available.
+SkyCheck uses TomTom for live traffic. Google Maps is not used, because its traffic-aware routing requires a billing account (credit card). TomTom's free tier works without one.
 
-TomTom behavior:
+### Saved routes and Go / No-Go with a route
 
-- Dashboard traffic uses the user's current GPS coordinates.
-- Saved route traffic samples the route's start, middle, and destination points.
-- TomTom returns current road speed and free-flow speed.
-- The backend converts those samples into a congestion ratio and low/moderate/high traffic volume level.
-- For saved routes, the worst TomTom segment is used so the app does not hide a congested middle or destination area.
+1. **TomTom Routing** (preferred): one request follows the real road path from start to Gordon College and compares live travel time against free-flow travel time for the whole trip. This accounts for queues, closures, and incidents.
+2. **TomTom Flow sampling** (fallback): samples current vs free-flow speed at the route start, middle, and destination and uses the worst reading.
+3. **Rush-hour estimate** (last resort): a time-based heuristic.
 
-If TomTom is unavailable, missing, or rate-limited, SkyCheck uses a Philippine rush-hour heuristic.
+### Dashboard (no route selected)
 
-The fallback estimates traffic based on:
+The backend samples TomTom flow at five points around the city center (about 1.5 to 2 km apart), which is more stable than a single GPS point.
 
-- Morning rush hour
-- Lunch rush
-- Evening rush hour
-- Weekend vs weekday behavior
-- Local commute patterns
+### Risk levels
 
-This means traffic does not become useless when the traffic API fails.
+Traffic risk comes from the ratio of current speed (or travel time) to free-flow:
 
-The UI shows the traffic source:
+- Ratio below 0.50: `HIGH`
+- Ratio below 0.75: `MEDIUM`
+- Otherwise: `LOW`
 
-- `TomTom` when live road flow is available
-- `time based` when the fallback heuristic is used
-- `cached` when only stored route risk is available
+### Fallback
+
+If `TOMTOM_API_KEY` is missing, rejected, or rate-limited, SkyCheck uses a Philippine rush-hour heuristic (morning rush, lunch, evening rush, weekday vs weekend). Traffic does not become useless when the API fails, but it is an estimate, not a live reading.
+
+The UI shows the source: `TomTom` when live data is used, `time based` for the heuristic, and `cached` when only stored route risk is available. Results are cached for 10 minutes.
 
 ## 11. Flood Risk System
 
 Flood risk is estimated using:
 
-- Elevation
+- Elevation (OpenTopoData SRTM 30 m)
 - Rain probability
 - Recent precipitation
 - Route start and destination points
 
-The backend checks route flood risk by evaluating both endpoints and using the worse condition.
+For routes, both endpoints are evaluated and the worse result is used.
 
-Flood risk categories:
+Thresholds (calibrated for Central Luzon):
 
-- `LOW`
-- `MEDIUM`
-- `HIGH`
-- `UNKNOWN`
+- Elevation at or below 8 m: high flood zone
+- Elevation at or below 20 m: moderate flood zone
+- Rain probability of 70% or more, or 8 mm or more precipitation: strong runoff concern
 
-`UNKNOWN` is used when the elevation service is unavailable.
+Flood risk categories are `LOW`, `MEDIUM`, `HIGH`, and `UNKNOWN`. `UNKNOWN` is used when the elevation service is unavailable. Elevation lookups are cached and throttled to stay within the free API limits.
 
 ## 12. Route System
 
-Users can save routes with:
+### Fixed destination
 
-- Start address
-- Destination address
-- Coordinates
+Every route goes to **Gordon College, Bacon Street, West Tapinac, Olongapo City**. The destination is fixed in the frontend (`skycheck/src/constants/destination.ts`) and users cannot change it. Users only choose the starting point.
+
+(The backend validates that both endpoints are inside the coverage area but does not itself force the destination to be Gordon College.)
+
+### Choosing the starting point
+
+In the Add Route sheet, the user can:
+
+- Tap the current-location button to use GPS (reverse geocoded to an address), or
+- Type an address and pick from search suggestions (OpenStreetMap Nominatim).
+
+When the user already granted GPS, a new route is pre-filled with the current position. If GPS fails, an explanation is shown and the user can type the starting point instead.
+
+### Coverage area
+
+SkyCheck covers **Olongapo, Subic, and Bataan** (latitude 14.38 to 15.0, longitude 120.1 to 120.65). Starting points outside this area are rejected by both the frontend and backend.
+
+### Saved route data
+
+A route stores:
+
+- Optional label
+- Start address and coordinates
+- Destination address and coordinates
 - Departure time
-- Distance
-- Duration
-- Multi-mode fare estimates
-- Last known route risk
+- Distance and duration (OpenRouteService, with OSRM and a straight-line estimate as fallbacks)
+- Last known risk (weather, traffic, flood, overall, basis, and time of check)
+
+Each user can save up to 5 routes.
 
 Route risk includes:
 
 - Weather
 - Traffic
 - Flood
-- Overall risk
+- Overall risk (the highest of the three)
 - Risk basis explanation
 - Combined risk headline explaining the main cause and secondary risks
-- Traffic volume level showing low, moderate, or high route traffic
+- Traffic volume level (low, moderate, high)
 
-Saved routes are refreshed by the backend and cached on the frontend. Offline mode can show the last cached saved routes, but adding, editing, and deleting routes require internet.
+Saved routes are refreshed by the backend and cached on the frontend. Offline mode can show the last cached routes, but adding, editing, and deleting routes require internet.
 
-The route preview map uses Leaflet with MapTiler street tiles when a key is configured, otherwise it falls back to OpenStreetMap tiles. The map zooms closer for route endpoints so nearby streets and barangay-level detail are easier to inspect.
+The route preview map uses Leaflet with MapTiler street tiles when a key is configured, otherwise OpenStreetMap tiles.
 
-Route cards are responsive. On smaller phones, long route names, addresses, risk messages, and fare labels wrap instead of being cropped. Fare estimate cards use a single-column layout on narrow screens and switch to two columns when the screen is wide enough.
+### Fare estimates
 
-Fare estimates include:
+- Jeepney - based on LTFRB fare guidance for traditional and modern jeepneys; shown as conditional because a jeepney line must exist for the route.
+- Tricycle - shown as conditional or limited because tricycle fares and routes are set by LGUs.
+- Taxi - based on the LTFRB formula (flag-down, per-kilometer, per-minute).
+- Maxim - app-based motorcycle estimate with a demand/availability buffer.
 
-- Jeepney - based on current LTFRB public fare guidance for traditional and modern jeepneys; shown as conditional because the route must have an available jeepney line.
-- Tricycle - shown as conditional or limited because tricycle fares and routes are controlled by LGUs, and tricycles are generally for local zones rather than long or national-highway trips.
-- Taxi - based on LTFRB taxi fare formula using flag-down, per-kilometer, and per-minute travel time charges.
-- Maxim - app-based motorcycle ride estimate with a demand/availability buffer.
+Each supported mode shows an original and a discounted estimate for student, PWD, and senior riders where the statutory discount applies. Maxim is shown separately because platform promos vary.
 
-Each supported fare mode shows an original estimate and a discounted estimate for student, PWD, and senior users where the statutory discount is applicable. Maxim is shown separately because platform promos and statutory discount handling may vary.
-
-The fare feature is an estimate and budgeting aid, not an official fare matrix. Final fares may change due to local ordinances, route availability, traffic, waiting time, or app demand.
+Fares are an estimate and budgeting aid, not an official fare matrix. Final fares may change due to local ordinances, route availability, traffic, waiting time, or app demand.
 
 ## 12.1 Combined Risk Messaging
 
-SkyCheck calculates the overall risk by taking the highest level among weather/heat, traffic, and flood risk. The UI then builds a readable message from the combination.
+SkyCheck takes the highest level among weather/heat, traffic, and flood risk as the overall risk. The UI then builds a readable message from the combination.
 
 Examples:
 
-- Weather/heat `HIGH`, traffic `MEDIUM`, flood `LOW`: `High weather/heat risk with moderate traffic - consider delaying travel and prepare for harsh conditions`
-- Weather/heat `LOW`, traffic `HIGH`, flood `LOW`: `High traffic risk - expect major delays and leave earlier`
-- Weather/heat `MEDIUM`, traffic `MEDIUM`, flood `LOW`: `Moderate weather/heat and traffic risk - bring protection and allow extra travel time`
+- Weather/heat `HIGH`, traffic `MEDIUM`, flood `LOW`: high weather/heat risk with moderate traffic - consider delaying travel and prepare for harsh conditions
+- Weather/heat `LOW`, traffic `HIGH`, flood `LOW`: high traffic risk - expect major delays and leave earlier
+- Weather/heat `MEDIUM`, traffic `MEDIUM`, flood `LOW`: moderate weather/heat and traffic risk - bring protection and allow extra travel time
 - Flood `HIGH` with any secondary risk: the message prioritizes flood safety and recommends avoiding low-lying routes
 
-This prevents misleading messages, such as showing "severe weather" when the actual high-risk cause is traffic.
+This prevents misleading messages such as "severe weather" when the real high-risk cause is traffic.
+
+Note: the "weather risk" level itself is based on rain probability (70% or more is `HIGH`, 40% or more is `MEDIUM`). Heat and wind are reported through separate heat and tip messages.
 
 ## 13. Go / No-Go Engine
 
@@ -322,116 +343,100 @@ The Go / No-Go engine combines multiple factors into one decision.
 
 Inputs:
 
-- Weather risk
+- Weather risk (rain probability)
 - Flood risk
-- Traffic risk
-- Selected route risk, if the user chooses a saved route
+- Traffic risk (with TomTom or time-based source)
 - Heat index
-- Rain probability
-- Wind speed
-- Health check answers
-- School status
-- Government advisory severity
+- Rain probability and wind speed
+- Selected route risk, if the user chooses a saved route
+- School status (`F2F`, `ONLINE`, `HYBRID`, `SUSPENDED`)
+- Government advisory severity (`INFO`, `ADVISORY`, `WARNING`, `CRITICAL`)
 
 Outputs:
 
 - Verdict
 - Primary reason
-- Safety score
-- Recommendation
-- Full assessment breakdown
-
-Decision categories:
-
-- `GO`
-- `OWN_RISK`
-- `DO_NOT_GO`
+- Safety score (0 to 100, higher is safer)
+- One-sentence recommendation
+- Factor-by-factor breakdown (each marked OK, CAUTION, or DANGER)
 
 Example logic:
 
-- Severe illness can produce `DO_NOT_GO`.
+- Suspended classes produce `DO_NOT_GO`; online classes produce `OWN_RISK` because commuting is optional.
+- A critical government advisory produces `DO_NOT_GO`.
 - High weather risk can produce `OWN_RISK`.
 - Combined severe weather and flood risk can produce `DO_NOT_GO`.
-- Online or suspended class status can affect the final decision.
-- If a saved route is selected, Go / No-Go uses fresh route-aware weather, flood, and TomTom traffic when possible; otherwise it falls back to cached route risk.
+- Heat index at or above 33°C lowers the score, and at or above 42°C lowers it more.
 
-## 14. Health Check
+If a saved route is selected, Go / No-Go evaluates fresh route-aware weather, flood, and TomTom traffic when possible, and otherwise falls back to the route's cached risk.
 
-The health check asks about:
+### Removed: health check
 
-- Overall feeling
-- Fever
-- Cough
-- Sore throat
-- Fatigue
-- Difficulty breathing
-- Headache
-- Body pain
-- Vomiting or nausea
-- Chronic conditions
-- Additional notes
+An earlier version asked users a daily symptom questionnaire (fever, cough, and so on) and fed it into the decision. It was removed because the answers are self-reported and can easily be manipulated or invalidated, so they are not a trustworthy safety input. Go / No-Go now uses only environmental and institutional data.
 
-The health check is used by the Go / No-Go engine because commute safety is not only environmental. A user with fever, breathing difficulty, or severe symptoms should not be advised the same way as a healthy user.
+## 14. Alerts and Background Jobs
 
-## 15. Offline / PWA Functionality
+Two scheduled jobs run on the backend:
 
-SkyCheck is installable as a PWA and supports offline access through cached data.
+- **Risk refresh, every 15 minutes:** re-evaluates the risk of saved routes and creates an alert when a route's risk worsens to `MEDIUM` or `HIGH` and the user has alerts enabled. Only routes owned by recently active users are checked (default window 120 minutes, set by `ACTIVE_USER_WINDOW_MINUTES`) to save API quota.
+- **Morning alerts, daily at 21:30 server time:** sends route risk alerts to active users who have morning alerts on. On a UTC server such as Render this is 5:30 AM Philippine time; no timezone is set in the code, so it follows the server clock.
+
+Users can mark alerts as read or unread, and delete them. Profile preferences control morning alerts, alert sound, and vibration. Jobs can be disabled with `DISABLE_CRON`.
+
+## 15. Announcements
+
+- **School announcements** (`F2F`, `ONLINE`, `HYBRID`, `SUSPENDED`) feed the class-status factor.
+- **Government announcements** (PAGASA, NDRRMC, LGU, CHED, DepEd) feed the advisory factor.
+
+The app displays announcements, but there is no in-app admin screen. They are created through the API (`POST /announcements/school` and `POST /announcements/gov`). These endpoints currently require only a logged-in user, not an admin role, so a role check should be added before real use.
+
+## 16. Offline / PWA Functionality
+
+SkyCheck is installable as a PWA and supports offline access through cached data. The query cache is kept for up to 24 hours, and the service worker caches weather, elevation, map tiles, and backend responses for short periods.
 
 Offline mode supports:
 
 - Last cached weather dashboard
 - Last cached route list
-- Local health check for today
-- Offline Go / No-Go estimate based on cached weather/risk data
+- Offline Go / No-Go estimate based on cached weather data
 
 Offline mode does not support:
 
-- Adding routes
-- Editing routes
-- Deleting routes
+- Adding, editing, or deleting routes
 - Searching new addresses
-- Fetching new weather
-- Fetching new traffic
-- Fetching new flood data
-- Fetching new advisories
+- Fetching new weather, traffic, flood data, or advisories
 
 Offline Go / No-Go behavior:
 
-1. User opens Dashboard while online at least once.
-2. Weather and risk data are cached.
-3. If the user goes offline, they can open Health Check.
-4. The offline health check is stored locally.
-5. Go / No-Go uses cached weather and local health data to produce an offline estimate.
+1. User opens the Dashboard while online at least once, so weather is cached.
+2. If the user goes offline, the Go / No-Go screen builds an estimate from the cached weather.
+3. The government advisory factor is shown as not refreshed.
 
 The app clearly labels the result as an offline estimate.
 
-## 16. Database Models
+## 17. Database Models
 
 Main Prisma models:
 
-- `User`
-- `Route`
-- `Alert`
-- `HealthCheck`
+- `User` (account, verification and reset tokens, login lockout, notification preferences, last active time)
+- `Route` (saved route and cached risk snapshot)
+- `Alert` (`WEATHER`, `TRAFFIC`, or `FLOOD` alerts)
 - `SchoolAnnouncement`
 - `GovAnnouncement`
 
-The database stores account records, saved routes, health checks, route risk snapshots, and announcements.
+## 18. API Summary
 
-## 17. API Summary
+All endpoints except authentication ones require a bearer JWT.
 
-Main API areas:
+- `/auth` - `register`, `login`, `firebase`, `google`, `verify-email`, `resend-verification`, `forgot-password`, `reset-password`, `change-password`, `logout`, `me`, `preferences`
+- `/weather` - current weather, 6-hour forecast, risk, and commute tips (`GET /weather?lat=&lon=`)
+- `/routes` - list, `preview` (distance, time, fares), create, update, delete, and `:id/risk`
+- `/alerts` - list, mark read/unread (single or all), delete
+- `/go-no-go/evaluate` - Go / No-Go evaluation (`POST`, optional `routeId`)
+- `/announcements` - list active school and government announcements, latest school status, and create/delete endpoints
+- `/health-check-server` and `/health-server` - server status for uptime checks (unrelated to the removed user health check)
 
-- `/auth` - authentication and Firebase session exchange
-- `/weather` - current weather, hourly forecast, risk, and tips
-- `/routes` - saved routes and route risk
-- `/alerts` - weather/traffic/flood alerts
-- `/health/today` - today's health check
-- `/health/check` - submit health check
-- `/health/evaluate` - Go / No-Go evaluation
-- `/announcements` - school and government announcements
-
-## 18. Environment Variables
+## 19. Environment Variables
 
 ### Frontend
 
@@ -446,7 +451,7 @@ VITE_FIREBASE_MESSAGING_SENDER_ID=
 VITE_MAPTILER_KEY=
 ```
 
-### Backend
+### Backend (required)
 
 ```env
 DATABASE_URL=
@@ -457,18 +462,30 @@ FRONTEND_URL=
 FIREBASE_PROJECT_ID=
 FIREBASE_CLIENT_EMAIL=
 FIREBASE_PRIVATE_KEY=
+GOOGLE_CLIENT_ID=
 EMAIL_USER=
 EMAIL_PASS=
 ORS_API_KEY=
 TOMTOM_API_KEY=
-ACCUWEATHER_API_KEY=
 ```
 
-## 19. Deployment Notes
+### Backend (optional)
+
+```env
+ACCUWEATHER_API_KEY=                # enables AccuWeather as the primary provider
+ACCUWEATHER_DAILY_REQUEST_BUDGET=   # default 40
+ACCUWEATHER_REFRESH_MINUTES=        # default 90
+MET_NO_USER_AGENT=                  # contact string required by MET Norway
+SMTP_HOST= SMTP_PORT= SMTP_SECURE= SMTP_USER= SMTP_PASS= EMAIL_FROM=
+EXTRA_ORIGINS=                      # extra allowed CORS origins
+ACTIVE_USER_WINDOW_MINUTES=         # default 120
+REQUIRE_EMAIL_VERIFICATION=
+DISABLE_CRON=
+```
+
+## 20. Deployment Notes
 
 Frontend is deployed on Vercel.
-
-Recommended settings:
 
 - Root directory: `skycheck`
 - Build command: `npm run build`
@@ -476,38 +493,38 @@ Recommended settings:
 
 Backend is deployed on Render.
 
-Recommended settings:
-
 - Root directory: `skycheck-backend`
 - Build command: `npm install --include=dev && npm run build`
-- Start command: `npm start`
+- Start command: `npm start` (applies database migrations first)
 
 Firebase Authentication authorized domains must include the deployed Vercel domain.
 
-## 20. Accuracy Notes
+## 21. Accuracy Notes and Limitations
 
-SkyCheck is intended as a commute decision-support tool, not an official weather agency replacement.
+SkyCheck is a commute decision-support tool, not an official weather agency replacement.
 
-Accuracy is improved by:
+Accuracy is supported by:
 
-- Combining Open-Meteo and AccuWeather
-- Using 15-minute precipitation signals when available
-- Calibrating rain probability with precipitation and weather codes
-- Using heat index instead of temperature alone
-- Adding traffic and flood context
-- Showing fallback estimates when live APIs fail
-- Using live GPS coordinates when available, with automatic Subic fallback when precise location cannot be trusted
-- Explaining mixed risk combinations instead of relying only on a single overall risk label
+- Using AccuWeather with Open-Meteo and MET Norway as fallbacks, so one provider outage does not remove weather data
+- Calibrating rain probability with precipitation, cloud cover, and 15-minute signals (Open-Meteo)
+- Using heat index instead of temperature alone, with thresholds based on PAGASA's heat index scale
+- Using TomTom route travel time for traffic instead of a single spot reading
+- Adding flood context from elevation and rain
+- Showing fallback estimates and labeling their source when live APIs fail
+- Using trusted GPS coordinates only, with an Olongapo fallback
+- Explaining mixed risk combinations instead of one overall label
+
+Known limitations:
+
+- Weather is city-level for Olongapo, not street-level, and does not come directly from PAGASA or Panahon.gov.ph.
+- Traffic depends on the TomTom free tier. When it is unavailable, the time-based estimate is used.
+- Flood risk is estimated from elevation and rain, not from official flood hazard maps or live water levels.
+- Government advisories and school status must be entered manually; they are not fetched automatically.
+- Location accuracy depends on the device. Mobile phones are usually more accurate; PC/laptop browsers may use rough Wi-Fi/IP estimates.
 
 The app should be presented as a support tool that helps students make safer decisions, not as an absolute guarantee.
 
-Location accuracy depends on the device:
-
-- Mobile phones are usually more accurate because they have GPS hardware.
-- PC/laptop browsers may use Wi-Fi/IP estimates, which can be rough or unavailable.
-- When the app cannot obtain precise coordinates, it avoids showing a fake exact location and clearly switches to the Subic fallback area.
-
-## 21. Presentation Questions and Answers
+## 22. Presentation Questions and Answers
 
 ### Does this use emerging technology?
 
@@ -515,40 +532,49 @@ Yes. It uses a Progressive Web App design, real-time API integration, location-b
 
 ### What problem does it solve?
 
-It helps students decide whether it is safe and practical to commute to school by combining weather, traffic, flood, health, and announcement data.
+It helps students decide whether it is safe and practical to commute to Gordon College by combining weather, traffic, flood, and announcement data.
 
 ### Who are the target users?
 
-The target users are student commuters, especially Gordon College students and nearby commuters affected by rain, heat, traffic, and flooding.
+Student commuters, especially Gordon College students and nearby commuters affected by rain, heat, traffic, and flooding.
 
 ### What technologies were used?
 
-React, Vite, TypeScript, Tailwind CSS, Firebase Auth, Node.js, Express, Prisma, PostgreSQL, Open-Meteo, AccuWeather, TomTom, OpenTopoData, Vercel, and Render.
+React, Vite, TypeScript, Tailwind CSS, Firebase Auth, Node.js, Express, Prisma, PostgreSQL, AccuWeather, Open-Meteo, MET Norway, TomTom, OpenRouteService, OpenTopoData, Vercel, and Render.
 
 ### How does offline mode work?
 
-The PWA stores selected data locally. When offline, it can show cached weather and saved routes. It can also create an offline Go / No-Go estimate using cached weather and a local health check.
+The PWA stores selected data locally. When offline, it can show cached weather and saved routes, and create an offline Go / No-Go estimate from cached weather.
 
 ### Is the app unique?
 
-Yes. Many apps show weather or traffic separately. SkyCheck combines those with health checks, route risk, flood risk, school status, and offline support to answer a student-specific question: should I go to school today?
+Many apps show weather or traffic separately. SkyCheck combines those with route risk, flood risk, school status, and offline support to answer a student-specific question: should I go to school today?
 
 ### How accurate is it?
 
-It is more accurate than relying on one simple weather reading because it combines multiple factors. However, it should still be treated as a decision-support tool, not an official emergency warning system.
+It is more dependable than a single weather reading because it combines several factors and has fallbacks for each data source. However, it is a decision-support tool, not an official emergency warning system, and PAGASA remains the authority during severe weather.
+
+### Why was the health check removed?
+
+The health check relied on self-reported answers, which can easily be manipulated or invalidated. It was removed so decisions rely only on verifiable environmental and institutional data.
+
+### Why TomTom and not Google Maps for traffic?
+
+Google's traffic-aware routing requires a billing account. TomTom provides live route travel time and flow data without one. Google could be added as an optional higher-accuracy source if a billing account is available.
 
 ### What happens if GPS fails?
 
-The app automatically uses `Subic, Zambales, Central Luzon, PH` as a fallback location, fetches weather and risk data for that area, and notifies the user that mobile GPS is recommended for better accuracy.
+The app falls back to `Olongapo, Zambales, Central Luzon`, fetches weather and risk for that area, and tells the user that mobile GPS is recommended. The user can still type a starting point manually when adding a route.
 
-## 22. Future Improvements
+## 23. Future Improvements
 
-Possible future improvements:
-
+- Automatic PAGASA bulletin and advisory ingestion (no official API exists, so this would need scraping or a data partner)
+- Optional Google Maps traffic as a higher-accuracy source
+- Admin role and in-app screen for posting school and government announcements
 - Push notifications for worsening route risk
-- Admin dashboard for school announcements
-- More precise flood mapping
+- More precise flood mapping from official hazard maps
 - More route waypoints for traffic and flood checking
+- Street-level weather for saved routes instead of city-level
 - Historical commute risk analytics
-- Better offline syncing for health checks
 - Support for more campuses
+- Removing the unused `HealthCheck` database table and model with a migration
