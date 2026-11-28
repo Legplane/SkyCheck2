@@ -61,8 +61,10 @@ export default defineConfig({
             },
           },
           {
+            // Manual refreshes (?refresh=1) must always hit the network, never the SW cache.
             urlPattern: ({ url }) =>
-              url.pathname.startsWith('/api/') || url.port === '3000',
+              (url.pathname.startsWith('/api/') || url.port === '3000') &&
+              !url.searchParams.has('refresh'),
             handler: 'NetworkFirst',
             options: {
               cacheName: 'backend-api',
