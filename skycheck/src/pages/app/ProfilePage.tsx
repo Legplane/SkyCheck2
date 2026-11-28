@@ -1,12 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
   Lock, Shield, Info, Trash2, ChevronRight,
   Bell, Volume2, Vibrate, LogOut, CheckCircle2,
-  X, CloudSun, MapPinned, Users, Target
+  X, CloudSun, MapPinned, Users, Target, UserX, AlertTriangle
 } from 'lucide-react';
-import { logout, updatePreferences } from '../../api/auth';
+import { logout, updatePreferences, deleteAccount, getMe } from '../../api/auth';
+import { getApiErrorMessage } from '../../api/client';
 import { useAuthStore } from '../../store/authStore';
 import { getInitials } from '../../utils';
 
@@ -17,6 +18,7 @@ export default function ProfilePage() {
 
   const [showChangePass, setShowChangePass] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
+  const [showDelete, setShowDelete] = useState(false);
 
   const { mutate: doLogout } = useMutation({
     mutationFn: logout,
@@ -151,6 +153,22 @@ export default function ProfilePage() {
           />
         </div>
 
+        {/* Danger Zone */}
+        <SectionHeader title="DANGER ZONE" />
+        <div className="bg-white mx-4 rounded-2xl shadow-card overflow-hidden">
+          <button
+            onClick={() => setShowDelete(true)}
+            className="flex items-center gap-3 px-4 py-3.5 w-full hover:bg-red-50 transition-colors"
+          >
+            <UserX size={18} className="text-red-500 shrink-0" />
+            <div className="flex-1 min-w-0 text-left">
+              <p className="text-sm font-medium text-red-600">Delete Account</p>
+              <p className="text-xs text-gray-400">Permanently remove your account and data</p>
+            </div>
+            <ChevronRight size={16} className="text-gray-300 shrink-0" />
+          </button>
+        </div>
+
         {/* Logout */}
         <div className="mx-4 mt-4 mb-6">
           <button
@@ -169,6 +187,9 @@ export default function ProfilePage() {
       )}
       {showAbout && (
         <AboutSkyCheckModal onClose={() => setShowAbout(false)} />
+      )}
+      {showDelete && (
+        <DeleteAccountModal onClose={() => setShowDelete(false)} />
       )}
     </div>
   );
@@ -383,6 +404,121 @@ function ChangePasswordModal({ onClose }: { onClose: () => void }) {
             </form>
           </>
         )}
+      </div>
+    </div>
+  );
+}
+
+// ── Delete Account Modal ──────────────────────────────────────────
+function DeleteAccountModal({ onClose }: { onClose: () => void }) {
+  const navigate = useNavigate();
+  const qc = useQueryClient();
+  const { user, setUser, clearAuth } = useAuthStore();
+  const [password, setPassword] = useState('');
+  const [confirmText, setConfirmText] = useState('');
+  const [showPass, setShowPass] = useState(false);
+  const [error, setError] = useState('');
+
+  // Sessions saved before this feature may not know if the account has a password.
+  useEffect(() => {
+    if (user && user.hasPassword === undefined) {
+      getMe().then(setUser).catch(() => {});
+    }
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const needsPassword = user?.hasPassword === true;
+  const ready = user?.hasPassword !== undefined;
+  const canSubmit = needsPassword ? password.length > 0 : confirmText === 'DELETE';
+
+  const { mutate, isPending } = useMutation({
+    mutationFn: () =>
+      deleteAccount(needsPassword ? { password } : { confirmText }),
+    onSuccess: () => {
+      clearAuth();
+      qc.clear();
+      if ('caches' in window) {
+        caches.keys().then(names => names.forEach(n => caches.delete(n)));
+      }
+      navigate('/auth/login', { replace: true });
+    },
+    onError: (err: unknown) => setError(getApiErrorMessage(err, 'Failed to delete account.')),
+  });
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError('');
+    if (canSubmit) mutate();
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-6">
+      <div className="absolute inset-0 bg-black/50" onClick={isPending ? undefined : onClose} />
+      <div className="relative bg-white rounded-2xl p-6 w-full max-w-xs shadow-2xl animate-slideUp">
+        <div className="flex flex-col items-center text-center gap-3">
+          <div className="bg-red-100 p-4 rounded-full">
+            <AlertTriangle className="text-red-500" size={28} />
+          </div>
+          <h3 className="text-lg font-bold text-gray-900">Delete Account?</h3>
+          <p className="text-sm text-gray-600 leading-relaxed">
+            This permanently deletes your account, saved routes, alerts, and health check history.
+            This action <span className="font-semibold text-gray-900">cannot be undone</span>.
+          </p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="mt-4 space-y-3">
+          {error && <p className="text-xs text-red-500">⚠ {error}</p>}
+          {ready && (needsPassword ? (
+            <div className="relative">
+              <input
+                type={showPass ? 'text' : 'password'}
+                placeholder="Enter your password"
+                value={password}
+                autoComplete="current-password"
+                onChange={e => setPassword(e.target.value)}
+                className="w-full px-3 pr-9 py-2.5 border border-gray-200 rounded-xl text-sm"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPass(v => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400"
+                aria-label={showPass ? 'Hide password' : 'Show password'}
+              >
+                {showPass ? <EyeOff size={14} /> : <Eye size={14} />}
+              </button>
+            </div>
+          ) : (
+            <input
+              type="text"
+              placeholder='Type "DELETE" to confirm'
+              value={confirmText}
+              autoComplete="off"
+              onChange={e => setConfirmText(e.target.value)}
+              className="w-full px-3 py-2.5 border border-gray-200 rounded-xl text-sm"
+            />
+          ))}
+
+          <div className="flex gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isPending}
+              className="flex-1 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-600 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={!ready || !canSubmit || isPending}
+              className="flex-1 py-2.5 bg-red-500 text-white rounded-xl text-sm font-semibold hover:bg-red-600 disabled:opacity-50 flex items-center justify-center"
+            >
+              {isPending ? (
+                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              ) : (
+                'Delete'
+              )}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );
