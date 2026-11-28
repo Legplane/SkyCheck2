@@ -245,6 +245,12 @@ function cleanTomTomKey(value: string | undefined): string | null {
   return key;
 }
 
+/** Forget cached traffic readings so the next request asks TomTom again. */
+export function clearTrafficCache(): void {
+  trafficCache.clear();
+  routeTrafficCache.clear();
+}
+
 function trafficCacheKey(lat: number, lon: number): string {
   return `${Math.round(lat * 1000) / 1000},${Math.round(lon * 1000) / 1000}`;
 }
