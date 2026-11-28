@@ -112,8 +112,9 @@ export default function GoNoGoPage() {
     setSelectedRouteId(routeId);
   };
 
-  const { data: liveResult, isLoading, isFetching, refetch, error } = useQuery({
-    queryKey: ['go-no-go', lat, lon, routeIdForEvaluation ?? (selectedRouteId || 'pending-route-basis')],
+  const goNoGoKey = ['go-no-go', lat, lon, routeIdForEvaluation ?? (selectedRouteId || 'pending-route-basis')];
+  const { data: liveResult, isLoading, isFetching, error } = useQuery({
+    queryKey: goNoGoKey,
     queryFn:  () => evaluateGoNoGo({ lat, lon, routeId: routeIdForEvaluation }),
     staleTime: 5 * 60 * 1000,
     gcTime:    0,
@@ -125,6 +126,14 @@ export default function GoNoGoPage() {
     refetchOnReconnect: true,
     refetchInterval: isOnline ? 5 * 60 * 1000 : false,
   });
+
+  // Refresh button: ask the server to skip its caches and fetch the latest data.
+  const refetch = () =>
+    qc.fetchQuery({
+      queryKey: goNoGoKey,
+      queryFn:  () => evaluateGoNoGo({ lat, lon, routeId: routeIdForEvaluation, refresh: true }),
+      staleTime: 0,
+    }).catch(() => { /* error state comes from the query below on retry */ });
 
   const offlineResult = !isOnline && cachedWeather
     ? buildOfflineGoNoGo(cachedWeather)
