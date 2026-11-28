@@ -6,8 +6,11 @@ import type {
 } from '../types';
 
 // ── Weather ───────────────────────────────────────────────────────
-export async function fetchWeather(lat: number, lon: number): Promise<WeatherSnapshot> {
-  const { data } = await apiClient.get<WeatherSnapshot>('/weather', { params: { lat, lon } });
+/** `force: true` makes the server skip its caches and fetch from the providers. */
+export async function fetchWeather(lat: number, lon: number, force = false): Promise<WeatherSnapshot> {
+  const { data } = await apiClient.get<WeatherSnapshot>('/weather', {
+    params: force ? { lat, lon, refresh: 1, _t: Date.now() } : { lat, lon },
+  });
   return data;
 }
 
@@ -38,8 +41,10 @@ export async function previewRoute(payload: {
   return data;
 }
 
-export async function getRouteRisk(id: string): Promise<CombinedRisk> {
-  const { data } = await apiClient.get<CombinedRisk>(`/routes/${id}/risk`);
+export async function getRouteRisk(id: string, force = false): Promise<CombinedRisk> {
+  const { data } = await apiClient.get<CombinedRisk>(`/routes/${id}/risk`, {
+    params: force ? { refresh: 1, _t: Date.now() } : undefined,
+  });
   return data;
 }
 
@@ -72,7 +77,7 @@ export async function deleteAllAlerts(): Promise<{ deleted: number }> {
 }
 
 export async function evaluateGoNoGo(params: {
-  lat: number; lon: number; routeId?: string;
+  lat: number; lon: number; routeId?: string; refresh?: boolean;
 }): Promise<GoNoGoResult> {
   // Evaluation fans out to several weather/traffic/flood providers and a free-tier
   // host may be cold-starting, so allow more time than the 30s default.
