@@ -197,6 +197,12 @@ export async function accuWeatherGeoposition(
   }
 }
 
+/** Forget cached current/hourly forecasts (geo lookups are kept; they never change). */
+export function clearAccuWeatherForecastCache(): void {
+  currentCache.clear();
+  hourlyCache.clear();
+}
+
 export async function accuWeatherCurrent(locationKey: string, apiKey: string, force = false): Promise<AWCurrent | null> {
   if (!force && isAccuWeatherCoolingDown()) return null;
   const cacheKey = locationKey;
