@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Clock, MapPin, RefreshCw } from 'lucide-react';
 import { getRouteRisk } from '../api';
 import type { Route } from '../types';
@@ -23,6 +23,7 @@ interface RouteRiskCardProps {
 
 export default function RouteRiskCard({ route }: RouteRiskCardProps) {
   const isOnline = useOnlineStatus();
+  const qc = useQueryClient();
 
   const { data: liveRisk, isLoading, isFetching, refetch } = useQuery({
     queryKey: ['route-risk', route.id],
@@ -32,6 +33,14 @@ export default function RouteRiskCard({ route }: RouteRiskCardProps) {
     retry: isOnline ? 1 : 0,
     enabled: isOnline,
   });
+
+  // Refresh button: bypass the server-side caches and fetch the latest data.
+  const forceRefresh = () =>
+    qc.fetchQuery({
+      queryKey: ['route-risk', route.id],
+      queryFn: () => getRouteRisk(route.id, true),
+      staleTime: 0,
+    }).catch(() => { /* keep showing the previous reading */ });
 
   const routeName = route.label ??
     `${route.startAddress.split(',')[0].trim()} → ${route.destAddress.split(',')[0].trim()}`;
@@ -65,7 +74,7 @@ export default function RouteRiskCard({ route }: RouteRiskCardProps) {
           )}
           {!isLoading && (
             <button
-              onClick={() => refetch()}
+              onClick={() => { void forceRefresh(); }}
               disabled={isFetching || !isOnline}
               className="p-1 text-gray-400 hover:text-primary-600 rounded-lg disabled:opacity-30"
               title="Refresh this route's weather"
