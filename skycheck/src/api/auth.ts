@@ -137,3 +137,12 @@ export async function updatePreferences(prefs: {
   const { data } = await apiClient.patch<User>('/auth/preferences', prefs);
   return data;
 }
+
+// ── Delete Account ────────────────────────────────────────────────
+export async function deleteAccount(payload: {
+  password?: string;
+  confirmText?: string;
+}): Promise<{ message: string }> {
+  const { data } = await apiClient.delete('/auth/account', { data: payload });
+  return data;
+}
