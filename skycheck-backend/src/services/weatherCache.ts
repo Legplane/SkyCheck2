@@ -63,6 +63,11 @@ export function setCachedWeather(lat: number, lon: number, data: WeatherCachePay
   cache.set(cacheKey(lat, lon), { ...data, cachedAt: Date.now() });
 }
 
+/** Drop every cached city weather reading so the next request hits the providers. */
+export function clearWeatherCache(): void {
+  cache.clear();
+}
+
 export function getCacheSize(): number {
   return cache.size;
 }
