@@ -6,7 +6,7 @@ import { OAuth2Client } from 'google-auth-library';
 import { PrismaClient } from '@prisma/client';
 import { signToken, requireAuth } from '../middleware/auth';
 import { sendVerificationEmail, sendPasswordResetEmail, getEmailConfigStatus } from '../services/emailService';
-import { verifyFirebaseIdToken } from '../services/firebaseAdmin';
+import { verifyFirebaseIdToken, firebaseAdmin } from '../services/firebaseAdmin';
 import { RISK } from '../constants/risk';
 import { touchUserActivity } from '../services/activityService';
 
@@ -214,6 +214,7 @@ router.post('/google', loginLimiter, async (req: Request, res: Response) => {
         name: user.name,
         email: user.email,
         isVerified: user.isVerified,
+        hasPassword: !!user.passHash,
         preferences: {
           morningAlerts: user.morningAlerts,
           alertSound: user.alertSound,
@@ -303,6 +304,7 @@ router.post('/firebase', loginLimiter, async (req: Request, res: Response) => {
         name: user.name,
         email: user.email,
         isVerified: verified || user.isVerified,
+        hasPassword: !!user.passHash,
         preferences: {
           morningAlerts: user.morningAlerts,
           alertSound: user.alertSound,
@@ -378,6 +380,7 @@ router.post('/login', loginLimiter, async (req: Request, res: Response) => {
         name: user.name,
         email: user.email,
         isVerified: user.isVerified,
+        hasPassword: !!user.passHash,
         preferences: {
           morningAlerts: user.morningAlerts,
           alertSound:    user.alertSound,
@@ -419,6 +422,7 @@ router.post('/verify-email', async (req: Request, res: Response) => {
         name: user.name,
         email: user.email,
         isVerified: true,
+        hasPassword: !!user.passHash,
         preferences: { morningAlerts: user.morningAlerts, alertSound: user.alertSound, vibration: user.vibration },
         createdAt: user.createdAt.toISOString(),
       },
@@ -537,6 +541,7 @@ router.get('/me', requireAuth, async (req: Request, res: Response) => {
       name: user.name,
       email: user.email,
       isVerified: user.isVerified,
+      hasPassword: !!user.passHash,
       preferences: { morningAlerts: user.morningAlerts, alertSound: user.alertSound, vibration: user.vibration },
       createdAt: user.createdAt.toISOString(),
     });
@@ -559,6 +564,7 @@ router.patch('/preferences', requireAuth, async (req: Request, res: Response) =>
     });
     res.json({
       id: user.id, name: user.name, email: user.email, isVerified: user.isVerified,
+      hasPassword: !!user.passHash,
       preferences: { morningAlerts: user.morningAlerts, alertSound: user.alertSound, vibration: user.vibration },
       createdAt: user.createdAt.toISOString(),
     });
@@ -598,6 +604,59 @@ router.post('/change-password', requireAuth, async (req: Request, res: Response)
     res.status(500).json({ error: 'Failed to change password.' });
   }
 });
+// ── DELETE /auth/account ──────────────────────────────────────────
+// Permanently deletes the signed-in user and all of their data.
+// Password accounts must confirm with their password; Google/Firebase
+// accounts (no password stored) must send confirmText: "DELETE".
+const deleteAccountLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  message: { error: 'Too many attempts. Please wait 15 minutes.' },
+});
+
+router.delete('/account', requireAuth, deleteAccountLimiter, async (req: Request, res: Response) => {
+  try {
+    const { password, confirmText } = req.body ?? {};
+    const user = await prisma.user.findUnique({ where: { id: req.userId } });
+    if (!user) { res.status(404).json({ error: 'User not found.' }); return; }
+
+    if (user.passHash) {
+      if (typeof password !== 'string' || !password) {
+        res.status(400).json({ error: 'Please enter your password to delete your account.' });
+        return;
+      }
+      const valid = await bcrypt.compare(password, user.passHash);
+      if (!valid) { res.status(401).json({ error: 'Incorrect password.' }); return; }
+    } else if (confirmText !== 'DELETE') {
+      res.status(400).json({ error: 'Type DELETE to confirm account deletion.' });
+      return;
+    }
+
+    // Routes, alerts and health checks are removed by onDelete: Cascade.
+    await prisma.user.delete({ where: { id: user.id } });
+
+    // Best effort: also remove the Firebase Auth record so the person
+    // is not silently re-created on next Firebase/Google sign-in.
+    try {
+      const app = firebaseAdmin();
+      if (app) {
+        const fbUser = await app.auth().getUserByEmail(user.email);
+        await app.auth().deleteUser(fbUser.uid);
+      }
+    } catch (err) {
+      const code = (err as { code?: string })?.code;
+      if (code !== 'auth/user-not-found') {
+        console.warn('[Auth] Firebase user cleanup failed:', err);
+      }
+    }
+
+    res.json({ message: 'Your account has been permanently deleted.' });
+  } catch (err) {
+    console.error('[Auth] Delete account:', err);
+    res.status(500).json({ error: 'Failed to delete account.' });
+  }
+});
+
 // ── get ────────────────────────────────────
 router.get('/verify-email', async (req: Request, res: Response) => {
   try {
