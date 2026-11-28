@@ -46,6 +46,7 @@ export default function DashboardPage() {
   const [locRefreshing, setLocRefreshing] = useState(false);
   /** ISO — set when user taps refresh and weather loads successfully ("Updated …" reflects this tap). */
   const [lastManualRefreshAt, setLastManualRefreshAt] = useState<string | null>(null);
+  const [refreshFailed, setRefreshFailed] = useState(false);
   const refreshInFlightRef = useRef(false);
   const lastRefreshTapRef = useRef(0);
   const gpsTapRef = useRef(0);
@@ -103,6 +104,7 @@ export default function DashboardPage() {
     lastRefreshTapRef.current = now;
     refreshInFlightRef.current = true;
     setLocRefreshing(true);
+    setRefreshFailed(false);
     try {
       await Promise.race([
         refreshLocation(),
@@ -111,10 +113,12 @@ export default function DashboardPage() {
       const { lat: la, lon: lo } = useGeoStore.getState();
       await qc.fetchQuery({
         queryKey: ['weather', la, lo],
-        queryFn:  () => fetchWeather(la, lo),
+        queryFn:  () => fetchWeather(la, lo, true),
         staleTime: 0,
       });
       setLastManualRefreshAt(new Date().toISOString());
+    } catch {
+      setRefreshFailed(true);
     } finally {
       refreshInFlightRef.current = false;
       setLocRefreshing(false);
@@ -224,7 +228,9 @@ export default function DashboardPage() {
             </div>
           </div>
           <div className="flex items-center gap-2 shrink-0">
-            <span className="text-xs text-gray-400">{updatedLabel}</span>
+            <span className={`text-xs ${refreshFailed ? 'text-red-500' : 'text-gray-400'}`}>
+              {refreshFailed ? "Couldn't refresh" : updatedLabel}
+            </span>
             <button
               type="button"
               title="Refresh location & weather"
